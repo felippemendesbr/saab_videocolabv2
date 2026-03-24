@@ -6,3 +6,5 @@ Thumbs.db
 dist/
 build/
 coverage/
+*.zip
+public/assets/#VIDEO PT2.mp4
