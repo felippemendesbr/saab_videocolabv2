@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <title>SAAB video Collab - Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body class="vc-body vc-generator-page">
+    <header class="vc-header">
+      <div class="vc-header-content">
+        <nav class="vc-nav">
+          <a href="/logout" class="vc-link vc-link-with-icon">
+            <svg class="vc-menu-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M15 8l4 4-4 4M8 12h11M11 4H6a2 2 0 00-2 2v12a2 2 0 002 2h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span>Sair</span>
+          </a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="vc-main">
+      <section class="vc-card vc-generator-card">
+        <div class="vc-generator-hero">
+          <img
+            src="/assets/EMBRAER_ROLLOUT_GRIPEN_KV_V16.jpg"
+            alt="Banner Embraer Gripen"
+            class="vc-generator-hero-img"
+          />
+        </div>
+        <h2 class="vc-card-title">SAAB video Collab</h2>
+        <p class="vc-card-subtitle">
+          Envie sua foto para gerar seu vídeo institucional personalizado
+        </p>
+
+        <div id="generator-workspace">
+          <div class="vc-form-grid">
+            <div class="vc-form-column">
+            <div class="vc-generator-block">
+              <label for="photo-input" class="vc-label">Upload da foto</label>
+              <input
+                type="file"
+                id="photo-input"
+                accept="image/jpeg,image/jpg,image/png"
+                class="vc-input-file"
+              />
+              <p class="vc-helper-text">
+                Formatos aceitos: JPG, JPEG, PNG. Tamanho máximo: 5MB.
+              </p>
+            </div>
+
+            <div class="vc-preview-wrapper vc-generator-block">
+              <p class="vc-section-label">Preview da foto</p>
+              <div class="vc-photo-preview">
+                <p id="photo-preview-placeholder" class="vc-photo-placeholder">
+                  preview da foto do colaborador
+                </p>
+                <img
+                  id="photo-preview"
+                  alt="Preview da foto do colaborador"
+                  class="vc-photo-img"
+                />
+              </div>
+            </div>
+
+            </div>
+
+            <div class="vc-form-column">
+              <p class="vc-section-label">
+                Preview do Canvas
+              </p>
+              <div class="vc-canvas-wrapper">
+                <canvas
+                  id="preview-canvas"
+                  width="1920"
+                  height="1080"
+                  class="vc-canvas"
+                ></canvas>
+              </div>
+            </div>
+          </div>
+
+          <div class="vc-generator-actions">
+            <button
+              id="generate-button"
+              class="vc-button vc-button-primary vc-generate-center"
+              disabled
+            >
+              Gerar Vídeo
+            </button>
+
+            <div id="progress-container" class="vc-progress-container" hidden>
+              <p class="vc-processing-text">
+                Gerando seu vídeo personalizado...
+              </p>
+              <div class="vc-progress-bar">
+                <div
+                  id="progress-bar-inner"
+                  class="vc-progress-bar-inner"
+                ></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="result-preview" class="vc-result-preview" hidden>
+          <p class="vc-section-label">Preview do vídeo gerado</p>
+          <video
+            id="result-video"
+            class="vc-result-video"
+            controls
+            playsinline
+          ></video>
+        </div>
+
+        <div id="result-actions" hidden>
+          <button
+            id="download-button"
+            class="vc-button vc-button-secondary"
+            hidden
+          >
+            Baixar meu vídeo
+          </button>
+          <button
+            id="new-video-button"
+            class="vc-button vc-button-primary"
+            hidden
+          >
+            Gerar Novo Vídeo
+          </button>
+          <a
+            id="linkedin-share"
+            class="vc-linkedin-share"
+            href="https://www.linkedin.com/feed/"
+            target="_blank"
+            rel="noopener noreferrer"
+            hidden
+          >
+            Compartilhar no LinkedIn
+          </a>
+        </div>
+      </section>
+    </main>
+
+    <video
+      id="video-part1"
+      src="/assets/VIDEO%20PT1.mp4"
+      preload="auto"
+      class="vc-hidden-video"
+      crossorigin="anonymous"
+    ></video>
+    <audio id="audio-track" src="/assets/trilha.mp3" preload="auto"></audio>
+    <video
+      id="video-part2"
+      src="/assets/VIDEO%20PT2.mp4"
+      preload="auto"
+      class="vc-hidden-video"
+      crossorigin="anonymous"
+    ></video>
+
+    <script src="/js/videoRenderer.js"></script>
+    <script src="/js/app.js"></script>
+  </body>
+</html>
+

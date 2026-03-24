@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SAAB video Collab - Admin</title>
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body class="vc-body vc-admin-page">
+    <header class="vc-admin-topbar">
+      <div class="vc-admin-topbar-left">Bem-vindo ao sistema video Collab</div>
+      <a href="/logout" class="vc-admin-logout">
+        <svg class="vc-menu-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M15 8l4 4-4 4M8 12h11M11 4H6a2 2 0 00-2 2v12a2 2 0 002 2h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>Sair</span>
+      </a>
+    </header>
+
+    <main class="vc-admin-shell">
+      <aside class="vc-sidebar">
+        <div class="vc-sidebar-brand">
+          <span class="vc-sidebar-badge">SAAB</span>
+          <strong>video Collab</strong>
+        </div>
+        <button class="vc-sidebar-item is-active" data-tab="dashboard">
+          <svg class="vc-menu-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M3 12h7V3H3v9zm11 9h7v-7h-7v7zM3 21h7v-5H3v5zm11-9h7V3h-7v9z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span>Dashboard</span>
+        </button>
+        <button class="vc-sidebar-item" data-tab="users">
+          <svg class="vc-menu-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M8.5 7A3.5 3.5 0 118.5 0a3.5 3.5 0 010 7zM23 21v-2a4 4 0 00-3-3.87M16 1.13a3.5 3.5 0 010 6.74" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span>Usuários</span>
+        </button>
+        <button class="vc-sidebar-item" data-tab="collaborators">
+          <svg class="vc-menu-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M17 21v-2a5 5 0 00-10 0v2M12 11a4 4 0 100-8 4 4 0 000 8M22 21v-2a5 5 0 00-3-4.58M2 21v-2a5 5 0 013-4.58" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span>Colaboradores</span>
+        </button>
+      </aside>
+
+      <section class="vc-admin-content">
+        <section class="vc-card vc-tab-panel" data-panel="dashboard">
+          <div class="vc-dashboard-head">
+            <div>
+              <h2 class="vc-admin-title">Dashboard</h2>
+              <p class="vc-card-subtitle vc-dashboard-subtitle">Visão geral do sistema</p>
+            </div>
+            <button id="dashboard-refresh-button" class="vc-button vc-crud-ghost" type="button">
+              <svg class="vc-menu-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M20 5v5h-5M4 19v-5h5M6.5 9a7 7 0 0111.2-2.4L20 10M4 14l2.3 3.4A7 7 0 0017.5 15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span>Atualizar</span>
+            </button>
+          </div>
+
+          <div class="vc-admin-kpis">
+            <article class="vc-kpi-card">
+              <div class="vc-kpi-top">
+                <p class="vc-kpi-label">Usuários</p>
+                <span class="vc-kpi-icon">👤</span>
+              </div>
+              <p class="vc-kpi-value" id="kpi-users">-</p>
+            </article>
+            <article class="vc-kpi-card">
+              <div class="vc-kpi-top">
+                <p class="vc-kpi-label">Colaboradores</p>
+                <span class="vc-kpi-icon">👥</span>
+              </div>
+              <p class="vc-kpi-value" id="kpi-collaborators">-</p>
+            </article>
+            <article class="vc-kpi-card">
+              <div class="vc-kpi-top">
+                <p class="vc-kpi-label">Downloads</p>
+                <span class="vc-kpi-icon">⬇️</span>
+              </div>
+              <p class="vc-kpi-value" id="kpi-downloads">-</p>
+            </article>
+            <article class="vc-kpi-card">
+              <div class="vc-kpi-top">
+                <p class="vc-kpi-label">Gerou vídeo e não baixou</p>
+                <span class="vc-kpi-icon">⚠️</span>
+              </div>
+              <p class="vc-kpi-value" id="kpi-generate-no-download">-</p>
+            </article>
+          </div>
+
+          <div class="vc-dashboard-panels">
+            <div class="vc-dashboard-panel">
+              <h3 class="vc-dashboard-panel-title">Colaboradores x downloads</h3>
+              <div class="vc-dashboard-panel-body">
+                <canvas id="downloads-status-pie-chart" width="500" height="360" class="vc-admin-canvas"></canvas>
+              </div>
+            </div>
+            <div class="vc-dashboard-panel">
+              <h3 class="vc-dashboard-panel-title">Evolução de Downloads (30 dias)</h3>
+              <div class="vc-dashboard-panel-body">
+                <canvas id="downloads-daily-bar-chart" width="700" height="360" class="vc-admin-canvas"></canvas>
+              </div>
+            </div>
+            <div class="vc-dashboard-panel">
+              <h3 class="vc-dashboard-panel-title">Colaboradores por Empresa</h3>
+              <div class="vc-dashboard-panel-body">
+                <canvas id="collaborators-by-company-chart" width="500" height="360" class="vc-admin-canvas"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <div class="vc-dashboard-panel vc-dashboard-table-panel">
+            <h3 class="vc-dashboard-panel-title">Últimos 10 downloads</h3>
+            <div class="vc-dashboard-panel-body">
+              <div class="vc-table-wrapper">
+                <table class="vc-crud-table vc-zebra-table">
+                  <thead>
+                    <tr>
+                      <th>Empresa</th>
+                      <th>Colaborador</th>
+                      <th>E-mail</th>
+                      <th>Data/Hora</th>
+                    </tr>
+                  </thead>
+                  <tbody id="recent-downloads-by-company-list"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="vc-card vc-tab-panel vc-hidden" data-panel="users">
+          <div class="vc-crud-header">
+            <div>
+              <h2 class="vc-card-title">Usuários</h2>
+            </div>
+            <button id="users-new-button" class="vc-button vc-crud-primary-action">+ Novo Usuário</button>
+          </div>
+
+          <div class="vc-crud-filters">
+            <p class="vc-section-label">Filtros</p>
+            <input type="text" id="users-filter" class="vc-input" placeholder="Buscar por nome de empresa ou e-mail" />
+          </div>
+
+          <form id="admin-user-form" class="vc-form vc-crud-form vc-hidden">
+            <input type="email" id="admin-email" class="vc-input" placeholder="email@empresa.com" required />
+            <input type="text" id="admin-company" class="vc-input" placeholder="Empresa" required />
+            <select id="admin-role" class="vc-input">
+              <option value="user">Usuário</option>
+              <option value="admin">Admin</option>
+            </select>
+            <button class="vc-button vc-button-secondary" type="submit">Salvar</button>
+          </form>
+          <p id="admin-form-feedback" class="vc-helper-text"></p>
+
+          <div id="users-list-controls" class="vc-crud-list-controls">
+          <div class="vc-crud-toolbar">
+            <p id="users-count-text" class="vc-helper-text">Exibindo 0 registros</p>
+            <div class="vc-crud-toolbar-actions">
+              <button id="users-export-pdf" class="vc-button vc-crud-ghost" title="Exportar PDF">
+                <svg class="vc-menu-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M5 3h10l4 4v14H5zM15 3v5h5M8 12h8M8 16h8M8 8h4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span>Exportar para PDF</span>
+              </button>
+              <button id="users-export-csv" class="vc-button vc-crud-ghost" title="Exportar Excel">
+                <svg class="vc-menu-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M5 3h10l4 4v14H5zM15 3v5h5M7 14h10M7 10h10M7 18h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span>Exportar para Excel</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="vc-table-wrapper">
+            <table class="vc-crud-table">
+              <thead>
+                <tr>
+                  <th data-sort-key="email">Email</th>
+                  <th data-sort-key="company">Empresa</th>
+                  <th data-sort-key="role">Tipo</th>
+                  <th data-sort-key="is_active">Status</th>
+                  <th>Ações</th>
+                </tr>
+              </thead>
+              <tbody id="admin-users-list"></tbody>
+            </table>
+          </div>
+          <div class="vc-pagination-row">
+            <label class="vc-page-size-label">Registros por página:
+              <select id="users-page-size" class="vc-input vc-page-size-select">
+                <option value="10">10</option>
+                <option value="20">20</option>
+                <option value="50">50</option>
+              </select>
+            </label>
+            <div class="vc-pagination-actions">
+              <button id="users-page-first" class="vc-button vc-crud-ghost" type="button" title="Primeira página">«</button>
+              <button id="users-page-prev" class="vc-button vc-crud-ghost" type="button" title="Página anterior">‹</button>
+              <span id="users-page-info" class="vc-helper-text">Página 1 de 1</span>
+              <button id="users-page-next" class="vc-button vc-crud-ghost" type="button" title="Próxima página">›</button>
+              <button id="users-page-last" class="vc-button vc-crud-ghost" type="button" title="Última página">»</button>
+            </div>
+          </div>
+          </div>
+        </section>
+
+        <section class="vc-card vc-tab-panel vc-hidden" data-panel="collaborators">
+          <div class="vc-crud-header">
+            <div>
+              <h2 class="vc-card-title">Colaboradores</h2>
+            </div>
+            <div class="vc-crud-toolbar-actions">
+              <button id="collaborators-new-button" class="vc-button vc-crud-primary-action">+ Novo Colaborador</button>
+              <button id="go-import-screen" class="vc-button vc-crud-primary-action">Importar planilha</button>
+            </div>
+          </div>
+
+          <div class="vc-crud-filters">
+            <p class="vc-section-label">Filtros</p>
+            <input type="text" id="collaborators-filter" class="vc-input" placeholder="Buscar por nome de empresa ou e-mail" />
+          </div>
+
+          <form id="admin-collab-form" class="vc-form vc-crud-form vc-crud-form-collab vc-hidden">
+            <input type="text" id="collab-name" class="vc-input" placeholder="Nome completo" required />
+            <input type="email" id="collab-email" class="vc-input" placeholder="email@empresa.com" required />
+            <input type="text" id="collab-company" class="vc-input" placeholder="Empresa" required />
+            <button class="vc-button vc-button-secondary" type="submit">Salvar</button>
+            <button id="collaborators-cancel-new" class="vc-button vc-crud-ghost" type="button">Voltar para lista</button>
+          </form>
+          <p id="admin-collab-feedback" class="vc-helper-text"></p>
+
+          <div id="collaborators-list-controls" class="vc-crud-list-controls">
+          <div class="vc-crud-toolbar">
+            <p id="collaborators-count-text" class="vc-helper-text">Exibindo 0 registros</p>
+            <div class="vc-crud-toolbar-actions">
+              <button id="collaborators-export-pdf" class="vc-button vc-crud-ghost" title="Exportar PDF">
+                <svg class="vc-menu-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M5 3h10l4 4v14H5zM15 3v5h5M8 12h8M8 16h8M8 8h4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span>Exportar para PDF</span>
+              </button>
+              <button id="collaborators-export-csv" class="vc-button vc-crud-ghost" title="Exportar Excel">
+                <svg class="vc-menu-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M5 3h10l4 4v14H5zM15 3v5h5M7 14h10M7 10h10M7 18h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span>Exportar para Excel</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="vc-table-wrapper">
+            <table class="vc-crud-table">
+              <thead>
+                <tr>
+                  <th data-sort-key="name">Nome</th>
+                  <th data-sort-key="email">Email</th>
+                  <th data-sort-key="company">Empresa</th>
+                  <th data-sort-key="is_active">Status</th>
+                  <th>Ações</th>
+                </tr>
+              </thead>
+              <tbody id="admin-collaborators-list"></tbody>
+            </table>
+          </div>
+          <div class="vc-pagination-row">
+            <label class="vc-page-size-label">Registros por página:
+              <select id="collaborators-page-size" class="vc-input vc-page-size-select">
+                <option value="10">10</option>
+                <option value="20">20</option>
+                <option value="50">50</option>
+              </select>
+            </label>
+            <div class="vc-pagination-actions">
+              <button id="collaborators-page-first" class="vc-button vc-crud-ghost" type="button" title="Primeira página">«</button>
+              <button id="collaborators-page-prev" class="vc-button vc-crud-ghost" type="button" title="Página anterior">‹</button>
+              <span id="collaborators-page-info" class="vc-helper-text">Página 1 de 1</span>
+              <button id="collaborators-page-next" class="vc-button vc-crud-ghost" type="button" title="Próxima página">›</button>
+              <button id="collaborators-page-last" class="vc-button vc-crud-ghost" type="button" title="Última página">»</button>
+            </div>
+          </div>
+          </div>
+        </section>
+
+        <section class="vc-card vc-tab-panel vc-hidden" data-panel="collaborators-import">
+          <div class="vc-crud-header">
+            <div>
+              <h2 class="vc-card-title">Importação de Colaboradores</h2>
+              <p class="vc-card-subtitle">Envie a planilha e valide os dados antes da confirmação</p>
+            </div>
+            <button id="back-collaborators-screen" class="vc-button vc-crud-ghost">Voltar</button>
+          </div>
+
+          <div class="vc-form-column">
+            <input type="file" id="admin-import-file" class="vc-input-file" accept=".xlsx,.xls,.csv" />
+            <p class="vc-helper-text">Colunas esperadas: name, email, company</p>
+            <div class="vc-crud-toolbar-actions">
+              <button id="preview-import-button" class="vc-button vc-button-secondary">Pré-visualizar</button>
+              <button id="admin-import-button" class="vc-button vc-crud-primary-action">Confirmar importação</button>
+            </div>
+            <p id="admin-import-feedback" class="vc-helper-text"></p>
+            <p id="import-preview-summary" class="vc-helper-text"></p>
+          </div>
+
+          <div class="vc-table-wrapper">
+            <table class="vc-crud-table">
+              <thead>
+                <tr>
+                  <th>Nome</th>
+                  <th>Email</th>
+                  <th>Empresa</th>
+                </tr>
+              </thead>
+              <tbody id="import-preview-list"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script src="/js/admin.js"></script>
+  </body>
+</html>
+
