@@ -5,6 +5,10 @@
   const downloadButton = document.getElementById('download-button');
   const newVideoButton = document.getElementById('new-video-button');
   const linkedinShare = document.getElementById('linkedin-share');
+  const linkedinShareLink = document.getElementById('linkedin-share-link');
+  const facebookShareLink = document.getElementById('facebook-share-link');
+  const instagramShareLink = document.getElementById('instagram-share-link');
+  const shareCopyButton = document.getElementById('share-copy-button');
   const resultActions = document.getElementById('result-actions');
   const progressContainer = document.getElementById('progress-container');
   const progressBarInner = document.getElementById('progress-bar-inner');
@@ -21,12 +25,23 @@
 
   const MAX_FILE_SIZE_MB = 5;
   const CANVAS_BG_COLOR = '#373737';
+  // Troque para 'webm' quando quiser voltar ao fluxo antigo.
+  const DOWNLOAD_OUTPUT_FORMAT = 'webm'
 
   let currentImage = null;
   let collaboratorEmail = null;
   let collaboratorName = 'Colaborador';
   let downloadUrl = null;
   let lastRecordedBlob = null;
+  const LINKEDIN_SHARE_TEXT =
+    `Fazer parte da história do primeiro Gripen produzido no Brasil é algo que vou levar comigo com muito orgulho.\n` +
+    `Ver esse marco acontecer de perto torna tudo ainda mais especial. É a realização de um trabalho construído com dedicação, talento e o esforço de muitas pessoas.\n\n` +
+    `Being part of the story of the first Gripen produced in Brazil is something I will carry with great pride.\n` +
+    `Seeing this milestone happen up close makes it even more meaningful. It reflects the dedication, talent and hard work of many people.\n\n` +
+    `#EuSouParteDoGripen\n` +
+    `#Gripen\n` +
+    `#SaabBrasil\n` +
+    `@SaabBrasil`;
 
   function trackMetric(eventType) {
     if (!eventType) return Promise.resolve();
@@ -127,16 +142,86 @@
       return;
     }
 
-    trackMetric('download-click').finally(() => {
-      const url = URL.createObjectURL(lastRecordedBlob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'video-colaborador.webm';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+    const originalLabel = downloadButton.textContent;
+    downloadButton.disabled = true;
+    downloadButton.textContent = 'Preparando download...';
+
+    trackMetric('download-click').finally(async () => {
+      try {
+        if (DOWNLOAD_OUTPUT_FORMAT === 'mp4') {
+          downloadButton.textContent = 'Convertendo para MP4...';
+          const convertedBlob = await convertWebmToMp4(lastRecordedBlob);
+          triggerBlobDownload(convertedBlob, 'video-colaborador.mp4');
+          return;
+        }
+      } catch (error) {
+        console.error('Falha na conversão para MP4. Mantendo download em WEBM:', error);
+        alert('Não foi possível converter para MP4 agora. O download será feito em WEBM.');
+      }
+      triggerBlobDownload(lastRecordedBlob, 'video-colaborador.webm');
+    }).finally(() => {
+      downloadButton.disabled = false;
+      downloadButton.textContent = originalLabel;
     });
+  }
+
+  function triggerBlobDownload(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  async function convertWebmToMp4(blob) {
+    const formData = new FormData();
+    formData.append('video', blob, 'video-colaborador.webm');
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 85000);
+    let response;
+    try {
+      response = await fetch('/api/convert-to-mp4', {
+        method: 'POST',
+        body: formData,
+        signal: controller.signal
+      });
+    } catch (err) {
+      if (err && err.name === 'AbortError') {
+        throw new Error('A conversão para MP4 demorou mais do que o tempo máximo permitido.');
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+    if (!response.ok) {
+      let message = 'Erro ao converter para MP4.';
+      try {
+        const payload = await response.json();
+        if (payload && payload.error) message = payload.error;
+      } catch (e) {}
+      throw new Error(message);
+    }
+    return response.blob();
+  }
+
+  function copyLinkedinShareText() {
+    if (!navigator.clipboard || !navigator.clipboard.writeText) {
+      return Promise.reject(new Error('Clipboard API não disponível.'));
+    }
+    return navigator.clipboard.writeText(LINKEDIN_SHARE_TEXT);
+  }
+
+  function handleSocialShareClick(networkName) {
+    copyLinkedinShareText()
+      .then(() => {
+        alert(`Texto copiado! No ${networkName}, cole com Ctrl+V e anexe o vídeo.`);
+      })
+      .catch(() => {
+        alert('Não foi possível copiar automaticamente. Copie manualmente o texto sugerido.');
+      });
   }
 
   function validateAndLoadImage(file) {
@@ -347,6 +432,36 @@
         event.preventDefault();
         clearPreviousResult();
         showProgress(false);
+      });
+    }
+
+    if (linkedinShareLink) {
+      linkedinShareLink.addEventListener('click', () => {
+        handleSocialShareClick('LinkedIn');
+      });
+    }
+
+    if (facebookShareLink) {
+      facebookShareLink.addEventListener('click', () => {
+        handleSocialShareClick('Facebook');
+      });
+    }
+
+    if (instagramShareLink) {
+      instagramShareLink.addEventListener('click', () => {
+        handleSocialShareClick('Instagram');
+      });
+    }
+
+    if (shareCopyButton) {
+      shareCopyButton.addEventListener('click', () => {
+        copyLinkedinShareText()
+          .then(() => {
+            alert('Texto copiado novamente com sucesso!');
+          })
+          .catch(() => {
+            alert('Não foi possível copiar automaticamente. Copie manualmente o texto sugerido.');
+          });
       });
     }
   }

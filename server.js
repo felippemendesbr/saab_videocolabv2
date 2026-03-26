@@ -2,6 +2,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { execFile } = require('child_process');
+const ffmpegStatic = require('ffmpeg-static');
 const express = require('express');
 const session = require('express-session');
 const bodyParser = require('body-parser');
@@ -13,6 +14,8 @@ const { pool, initDatabase } = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const FFMPEG_BIN = process.env.FFMPEG_PATH || ffmpegStatic || 'ffmpeg';
+const FFMPEG_TIMEOUT_MS = Number(process.env.FFMPEG_TIMEOUT_MS || 120000);
 
 const uploadsDir = path.join(os.tmpdir(), 'saab-videocolab-uploads');
 if (!fs.existsSync(uploadsDir)) {
@@ -118,16 +121,22 @@ app.post(
       outputPath
     ];
 
-    execFile('ffmpeg', ffmpegArgs, (error, stdout, stderr) => {
+    const ffmpegProcess = execFile(FFMPEG_BIN, ffmpegArgs, (error, stdout, stderr) => {
+      clearTimeout(timeoutId);
       fs.unlink(inputPath, () => {});
 
       if (error) {
+        const isKilled = error.killed || /SIGKILL|signal/i.test(String(error.signal || ''));
         console.error('Erro ao executar FFmpeg:', error);
+        console.error('Binário FFmpeg utilizado:', FFMPEG_BIN);
         console.error(stderr);
         fs.unlink(outputPath, () => {});
-        return res
-          .status(500)
-          .json({ error: 'Erro ao converter vídeo para MP4 no servidor.' });
+
+        const message = isKilled
+          ? 'A conversão para MP4 demorou mais do que o permitido no servidor.'
+          : 'Erro ao converter vídeo para MP4 no servidor.';
+
+        return res.status(500).json({ error: message });
       }
 
       res.setHeader('Content-Type', 'video/mp4');
@@ -151,6 +160,13 @@ app.post(
         });
       readStream.pipe(res);
     });
+
+    const timeoutId = setTimeout(() => {
+      if (ffmpegProcess && ffmpegProcess.kill) {
+        console.warn('FFmpeg excedeu tempo limite, encerrando processo.');
+        ffmpegProcess.kill('SIGKILL');
+      }
+    }, FFMPEG_TIMEOUT_MS);
   }
 );
 

@@ -44,6 +44,8 @@
   const PHOTO_PT2_CROSSFADE_S = 0.6;
   /** Mínimo de segundos da fase foto antes de iniciar o PT2. */
   const PHOTO_MIN_DISPLAY_S = 2;
+  /** Limite da fase foto para evitar vídeos longos em excesso. */
+  const PHOTO_MAX_DISPLAY_S = 6;
   /** Fade final da trilha nos últimos instantes (permite "e construir juntas" tocar completo). */
   const TRILHA_FINALE_FADE_S = 0.08;
   /** Segundos após início da gravação para pré-decode do PT2 (quanto mais cedo, mais tempo para carregar). */
@@ -70,6 +72,7 @@
   let part2GainNode = null;
   let recordedChunks = [];
   let animationFrameId = null;
+  let renderIntervalId = null;
   let isRecording = false;
   let startTimestamp = null;
   let startedVideoPlayback = false;
@@ -289,6 +292,21 @@
     } catch (e) {}
   }
 
+  function playMediaElement(mediaEl) {
+    if (!mediaEl) return;
+    const attemptPlay = () => {
+      mediaEl.play().catch(() => {});
+    };
+    if (mediaEl.readyState >= 2) {
+      attemptPlay();
+      return;
+    }
+    mediaEl.addEventListener('canplay', attemptPlay, { once: true });
+    try {
+      mediaEl.load();
+    } catch (e) {}
+  }
+
   function setupMediaRecorder(canvas, videoPart1, audioTrack, videoPart2) {
     canvasStream = canvas.captureStream(30);
     setupMixedAudioTrack(canvasStream, [videoPart1, audioTrack, videoPart2], {
@@ -360,6 +378,10 @@
       cancelAnimationFrame(animationFrameId);
       animationFrameId = null;
     }
+    if (renderIntervalId) {
+      clearInterval(renderIntervalId);
+      renderIntervalId = null;
+    }
 
     if (mediaRecorder && mediaRecorder.state !== 'inactive') {
       try {
@@ -372,6 +394,10 @@
     if (animationFrameId) {
       cancelAnimationFrame(animationFrameId);
       animationFrameId = null;
+    }
+    if (renderIntervalId) {
+      clearInterval(renderIntervalId);
+      renderIntervalId = null;
     }
 
     if (canvasStream) {
@@ -711,7 +737,7 @@
           trilhaPreRoll = true;
           audioTrack.loop = false;
           audioTrack.currentTime = TRILHA_START_OFFSET_S;
-          audioTrack.play().catch(() => {});
+          playMediaElement(audioTrack);
           setGainValue(
             trilhaGainNode,
             TRILHA_AMBIENT_HOLD_GAIN,
@@ -737,7 +763,7 @@
           if (!trilhaPreRoll) {
             audioTrack.loop = false;
             audioTrack.currentTime = TRILHA_START_OFFSET_S;
-            audioTrack.play().catch(() => {});
+            playMediaElement(audioTrack);
           }
           scheduleSmoothPt1TrilhaHandoff(PT1_TRILHA_AUDIO_BRIDGE_S);
         } else {
@@ -875,7 +901,18 @@
       onProgress(progress);
     }
 
-    animationFrameId = requestAnimationFrame(renderFrame);
+  }
+
+  function startRenderLoop() {
+    if (renderIntervalId) {
+      clearInterval(renderIntervalId);
+      renderIntervalId = null;
+    }
+    const intervalMs = 1000 / 30;
+    renderIntervalId = setInterval(() => {
+      if (!isRecording) return;
+      renderFrame(performance.now());
+    }, intervalMs);
   }
 
   async function startRecording(options) {
@@ -916,7 +953,7 @@
       audioTrack && trilhaPlayable > 0.08
         ? trilhaPlayable + PHOTO_TRILHA_BUFFER_S
         : INTRO_TOTAL_SECONDS;
-    photoPhaseSeconds = Math.max(PHOTO_MIN_DISPLAY_S, rawPhotoPhase);
+    photoPhaseSeconds = clamp(rawPhotoPhase, PHOTO_MIN_DISPLAY_S, PHOTO_MAX_DISPLAY_S);
 
     expectedVideoDuration = part1Duration + photoPhaseSeconds + part2Duration;
 
@@ -967,7 +1004,8 @@
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         mediaRecorder.start();
-        animationFrameId = requestAnimationFrame(renderFrame);
+        renderFrame(performance.now());
+        startRenderLoop();
       } catch (e) {
         cleanup();
         reject(e);

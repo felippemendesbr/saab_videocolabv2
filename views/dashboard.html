@@ -30,8 +30,15 @@
           />
         </div>
         <h2 class="vc-card-title">SAAB video Collab</h2>
+        <br />
         <p class="vc-card-subtitle">
-          Envie sua foto para gerar seu vídeo institucional personalizado
+          <strong>Você faz parte do primeiro Gripen produzido no Brasil</strong>
+        </p>
+        <p class="vc-card-subtitle vc-card-subtitle-detail">
+          Para que você possa se reconhecer nessa história e compartilhar sua participação nessa conquista, preparamos uma experiência de personalização do vídeo exibido durante a cerimônia de apresentação da aeronave. Essa é uma homenagem àqueles que tornaram esse marco possível.
+        </p>
+        <p class="vc-card-subtitle vc-card-subtitle-detail">
+          Faça o upload de uma foto em formato paisagem, com fundo neutro, de até 5 MB, nos formatos JPG, JPEG ou PNG. Essa imagem aparecerá como foto principal aos 17 segundos do vídeo.
         </p>
 
         <div id="generator-workspace">
@@ -45,13 +52,10 @@
                 accept="image/jpeg,image/jpg,image/png"
                 class="vc-input-file"
               />
-              <p class="vc-helper-text">
-                Formatos aceitos: JPG, JPEG, PNG. Tamanho máximo: 5MB.
-              </p>
             </div>
 
             <div class="vc-preview-wrapper vc-generator-block">
-              <p class="vc-section-label">Preview da foto</p>
+              <p class="vc-section-label">Prévia da foto</p>
               <div class="vc-photo-preview">
                 <p id="photo-preview-placeholder" class="vc-photo-placeholder">
                   preview da foto do colaborador
@@ -68,7 +72,7 @@
 
             <div class="vc-form-column">
               <p class="vc-section-label">
-                Preview do Canvas
+                Prévia do vídeo
               </p>
               <div class="vc-canvas-wrapper">
                 <canvas
@@ -129,16 +133,56 @@
           >
             Gerar Novo Vídeo
           </button>
-          <a
-            id="linkedin-share"
-            class="vc-linkedin-share"
-            href="https://www.linkedin.com/feed/"
-            target="_blank"
-            rel="noopener noreferrer"
-            hidden
-          >
-            Compartilhar no LinkedIn
-          </a>
+          <div id="linkedin-share" class="vc-linkedin-share" hidden>
+            <p class="vc-share-label">COMPARTILHE</p>
+            <div class="vc-share-icons">
+              <a
+                id="linkedin-share-link"
+                class="vc-share-icon vc-share-icon-linkedin"
+                href="https://www.linkedin.com/feed/"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Compartilhar no LinkedIn"
+                title="Compartilhar no LinkedIn"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M6.94 8.5H3.56V20h3.38V8.5zM5.25 3A1.97 1.97 0 1 0 5.24 6.94 1.97 1.97 0 0 0 5.25 3zM20.44 12.82c0-3.09-1.65-4.53-3.86-4.53-1.78 0-2.57.98-3.02 1.66V8.5h-3.38c.04.96 0 11.5 0 11.5h3.38v-6.42c0-.34.02-.68.13-.92.27-.68.9-1.39 1.95-1.39 1.38 0 1.93 1.05 1.93 2.59V20h3.38v-7.18z"></path>
+                </svg>
+              </a>
+              <a
+                id="facebook-share-link"
+                class="vc-share-icon vc-share-icon-facebook"
+                href="https://www.facebook.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Compartilhar no Facebook"
+                title="Compartilhar no Facebook"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M13.5 8.5V6.7c0-.74.5-.92.85-.92h2.13V2.5h-2.93C10.63 2.5 10 4.64 10 6.02V8.5H7.75V12h2.25v9h3.5v-9h2.68l.4-3.5H13.5z"></path>
+                </svg>
+              </a>
+              <a
+                id="instagram-share-link"
+                class="vc-share-icon vc-share-icon-instagram"
+                href="https://www.instagram.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Compartilhar no Instagram"
+                title="Compartilhar no Instagram"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 7.1A4.9 4.9 0 1 0 16.9 12 4.91 4.91 0 0 0 12 7.1zm0 8.1A3.2 3.2 0 1 1 15.2 12 3.2 3.2 0 0 1 12 15.2zm6.24-8.3a1.14 1.14 0 1 1-1.14-1.14 1.14 1.14 0 0 1 1.14 1.14zM21 7a5 5 0 0 0-1.36-3.52A5 5 0 0 0 16.12 2H7.88a5 5 0 0 0-3.52 1.48A5 5 0 0 0 3 7v8a5 5 0 0 0 1.36 3.52A5 5 0 0 0 7.88 20h8.24a5 5 0 0 0 3.52-1.48A5 5 0 0 0 21 15zM19.2 15a3.2 3.2 0 0 1-.87 2.25 3.2 3.2 0 0 1-2.21.95H7.88a3.2 3.2 0 0 1-2.21-.95A3.2 3.2 0 0 1 4.8 15V7a3.2 3.2 0 0 1 .87-2.25 3.2 3.2 0 0 1 2.21-.95h8.24a3.2 3.2 0 0 1 2.21.95A3.2 3.2 0 0 1 19.2 7z"></path>
+                </svg>
+              </a>
+            </div>
+            <button id="share-copy-button" type="button" class="vc-share-copy-btn">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M16 1H6a2 2 0 0 0-2 2v12h2V3h10V1zm3 4H10a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H10V7h9v14z"></path>
+              </svg>
+              <span>Copiar texto novamente</span>
+            </button>
+          </div>
         </div>
       </section>
     </main>
@@ -150,7 +194,7 @@
       class="vc-hidden-video"
       crossorigin="anonymous"
     ></video>
-    <audio id="audio-track" src="/assets/trilha.mp3" preload="auto"></audio>
+    <audio id="audio-track" src="/assets/TRILHA.mp3" preload="auto"></audio>
     <video
       id="video-part2"
       src="/assets/VIDEO%20PT2.mp4"
