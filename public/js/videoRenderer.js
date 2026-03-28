@@ -1,7 +1,21 @@
 (() => {
   /**
+   * Durações oficiais dos masters (timecode HH:MM:SS:FF → segundos).
+   * Ajuste SOURCE_TIMECODE_FPS se seus arquivos forem 24, 30 ou 29.97.
+   */
+  const SOURCE_TIMECODE_FPS = 25;
+  function tcToSeconds(ss, ff) {
+    return ss + ff / SOURCE_TIMECODE_FPS;
+  }
+  /** Parte 1 — 00:00:18:01 */
+  const PART1_DURATION_S = tcToSeconds(18, 1);
+  /** Trilha (áudio da foto) — 00:00:01:20 */
+  const TRILHA_FILE_DURATION_S = tcToSeconds(1, 20);
+  /** Parte 2 — 00:00:49:14 */
+  const PART2_DURATION_S = tcToSeconds(49, 14);
+
+  /**
    * Fallback quando não há trilha: duração fixa da fase foto (nome, zoom, etc.).
-   * Com trilha: a fase foto dura o áudio restante do arquivo (de TRILHA_START_OFFSET_S até o fim).
    */
   const INTRO_TOTAL_SECONDS = 2.35;
   const INTRO_FADE_IN_SECONDS = 0.5;
@@ -11,26 +25,21 @@
 
   /** Atraso curto para trilha entrar sem "buraco" perceptível. */
   const PHOTO_TRILHA_DELAY_S = 0.01;
+  /** Continuidade visual no corte timeline PT1→foto (evita 1 frame “quase foto” vs renderIntro). */
+  const PT1_TO_PHOTO_VISUAL_SEAM_S = 0.12;
 
   /**
-   * Dissolução PT1 → foto e foto → PT2 (mesma duração / mesmo tipo de blend).
+   * Dissolução PT1 → foto (visual). PT1 no master já inclui “aprender” completo — pode ser um pouco mais longa.
    */
-  const PT1_PHOTO_CROSSFADE_S = 0.65;
+  const PT1_PHOTO_CROSSFADE_S = 0.82;
   /**
-   * Duração total do handoff PT1 → trilha (fase “bleed” + cruzamento).
-   * Mais longo = junção mais suave, menos sensação de mute.
+   * Crossfade áudio PT1 → trilha (equal-power, ganho final 1 — volume alinhado com PT1/PT2).
    */
-  const PT1_TRILHA_AUDIO_BRIDGE_S = 0.38;
+  const PT1_TRILHA_AUDIO_BRIDGE_S = 0.72;
   /**
-   * Com a foto já na tela, mantém o áudio do PT1 em volume total por este tempo
-   * antes de iniciar o crossfade com a trilha — evita cortar o final da fala.
+   * Só PT1 audível na foto até iniciar o crossfade com a trilha (palavra completa no PT1 → hold mais curto).
    */
-  const PT1_AUDIO_HOLD_BEFORE_TRILHA_S = 0.42;
-  /**
-   * Volume da trilha logo na foto (fundo até o handoff com o PT1). `setGainValue` limita a 1.
-   */
-  const TRILHA_AMBIENT_HOLD_GAIN = 0.82;
-  const TRILHA_AMBIENT_RAMP_S = 0.14;
+  const PT1_AUDIO_HOLD_BEFORE_TRILHA_S = 0.4;
   /**
    * Seek no início da trilha (s). Manter 0: a fala “e construir juntas” vem ~1s depois no arquivo.
    */
@@ -40,18 +49,39 @@
   const PHOTO_TRILHA_BUFFER_S = 0.03;
   /** Fade curto do PT2 ao entrar para transição natural trilha → vídeo (evita corte seco ou mudo). */
   const PHOTO_PT2_AUDIO_FADE_S = 0.1;
-  /** Crossfade foto → PT2: duração do fade out da foto e fade in do vídeo. */
-  const PHOTO_PT2_CROSSFADE_S = 0.6;
-  /** Mínimo de segundos da fase foto antes de iniciar o PT2. */
-  const PHOTO_MIN_DISPLAY_S = 2;
-  /** Limite da fase foto para evitar vídeos longos em excesso. */
-  const PHOTO_MAX_DISPLAY_S = 6;
-  /** Fade final da trilha nos últimos instantes (permite "e construir juntas" tocar completo). */
-  const TRILHA_FINALE_FADE_S = 0.08;
+  /** Crossfade foto → PT2 (visual + áudio). Um pouco mais longo = menos corte seco. */
+  const PHOTO_PT2_CROSSFADE_S = 0.88;
+  /**
+   * O blend visual chega a 100% vídeo antes do fim da janela (últimos % só PT2 na fase foto),
+   * para coincidir com o primeiro frame da fase PT2 e não “pular” foto→vídeo.
+   */
+  const PHOTO_PT2_VISUAL_BLEND_COMPLETE = 0.86;
+  /**
+   * Áudio + play do PT2 começam antes da dissolução visual: a fala no 00:00 descodifica
+   * com a foto ainda em ecrã (ganho em crossfade), reduzindo travada no primeiro frame visível.
+   */
+  const PHOTO_PT2_AUDIO_LEAD_S = 0.22;
   /** Segundos após início da gravação para pré-decode do PT2 (quanto mais cedo, mais tempo para carregar). */
   const PART2_PREROLL_ELAPSED_S = 1.5;
   /** Sem trilha: sobe o áudio do PT2 com fade curto */
   const PART2_SOLO_AUDIO_FADE_S = 0.28;
+
+  /**
+   * Duração em segundos da fase “foto” na linha do tempo (relógio da gravação).
+   * Inclui tempo até a trilha estabilizar + duração do arquivo de trilha + margem + crossfade para o PT2.
+   */
+  function computePhotoPhaseSeconds(hasTrilha) {
+    if (!hasTrilha) {
+      return INTRO_TOTAL_SECONDS;
+    }
+    const trilhaStartAt = PHOTO_TRILHA_DELAY_S + PT1_AUDIO_HOLD_BEFORE_TRILHA_S;
+    return (
+      trilhaStartAt +
+      TRILHA_FILE_DURATION_S +
+      PHOTO_TRILHA_BUFFER_S +
+      PHOTO_PT2_CROSSFADE_S
+    );
+  }
 
   const NAME_TYPING_SECONDS = 1.5;
   const NAME_TYPING_START_SECONDS = 0.5;
@@ -61,6 +91,9 @@
   const ZOOM_END_SCALE = 1.08;
 
   const BG_COLOR = '#373737';
+
+  /** Alinhar captura ao rAF (~60 Hz) reduz “engasgos” nas dissoluções vs setInterval 30 Hz. */
+  const CANVAS_CAPTURE_FPS = 60;
 
   let mediaRecorder = null;
   let canvasStream = null;
@@ -82,13 +115,18 @@
   let photoSegmentStarted = false;
   let part1PausedAfterIntro = false;
   let trilhaStarted = false;
-  let trilhaPreRoll = false;
   /** Duração da fase foto (trilha até o fim, ou INTRO_TOTAL_SECONDS sem trilha). */
   let photoPhaseSeconds = INTRO_TOTAL_SECONDS;
-  let trilhaFadeOutScheduled = false;
-  let part2CrossfadeFreezeDone = false;
+  /** Áudio trilha→PT2 já agendado no início do crossfade visual. */
+  let part2CrossfadeAudioStarted = false;
   let part2Primed = false;
   let part2Started = false;
+  /** Evita atualizar UI a cada frame (menos trabalho na main thread nas transições). */
+  let lastProgressEmitT = 0;
+  const PROGRESS_EMIT_INTERVAL_MS = 72;
+
+  let eqPowerOutCurve = new Float32Array(128);
+  let eqPowerInCurve = new Float32Array(128);
 
   let currentResolve = null;
   let currentReject = null;
@@ -107,6 +145,41 @@
   function smoothstep01(t) {
     const x = clamp(t, 0, 1);
     return x * x * (3 - 2 * x);
+  }
+
+  /** Ken Perlin — caudas mais suaves que smoothstep (bom para dissolves longos). */
+  function smootherstep01(t) {
+    const x = clamp(t, 0, 1);
+    return x * x * x * (x * (x * 6 - 15) + 10);
+  }
+
+  /**
+   * Crossfade em potência aproximadamente constante (evita “buraco” de volume no meio do cruzamento).
+   * Ganhos finais em 1.0 para manter nível alinhado entre PT1, trilha e PT2.
+   */
+  function scheduleEqualPowerCrossfade(outGainNode, inGainNode, durationSeconds) {
+    if (!audioContext || !outGainNode || !inGainNode) return;
+    const dur = clamp(durationSeconds, 0.22, 1.35);
+    const now = audioContext.currentTime;
+    const n = 128;
+    const o0 = clamp(outGainNode.gain.value, 0, 1);
+    const i0 = clamp(inGainNode.gain.value, 0, 1);
+    for (let i = 0; i < n; i++) {
+      const t = i / (n - 1);
+      const co = Math.cos((Math.PI / 2) * t);
+      const si = Math.sin((Math.PI / 2) * t);
+      eqPowerOutCurve[i] = clamp(o0 * co, 0, 1);
+      eqPowerInCurve[i] = clamp(i0 + (1 - i0) * si, 0, 1);
+    }
+    try {
+      outGainNode.gain.cancelScheduledValues(now);
+      inGainNode.gain.cancelScheduledValues(now);
+      outGainNode.gain.setValueCurveAtTime(eqPowerOutCurve, now, dur);
+      inGainNode.gain.setValueCurveAtTime(eqPowerInCurve, now, dur);
+    } catch (e) {
+      setGainValue(outGainNode, 0, dur);
+      setGainValue(inGainNode, 1, dur);
+    }
   }
 
   function configureCanvasForFormat(canvas, format) {
@@ -212,37 +285,20 @@
     } catch (e) {}
   }
 
-  /**
-   * Handoff em 2 fases: a trilha sobe “por baixo” com o PT1 ainda em 100%,
-   * depois cruzamento linear. Em sinais diferentes, potência igual (cos/sin)
-   * costuma soar como um mute no meio — esta curva mantém energia mais estável.
-   */
+  /** PT1 → trilha: equal-power, sem boost >1 na trilha (volume equilibrado). */
   function scheduleSmoothPt1TrilhaHandoff(bridgeSeconds) {
     if (!audioContext || !part1GainNode || !trilhaGainNode) return;
-    const bridgeTotal = clamp(bridgeSeconds, 0.22, 0.6);
-    const now = audioContext.currentTime;
-    const bleed = clamp(bridgeTotal * 0.48, 0.14, 0.26);
-    const tBleedEnd = now + bleed;
-    const tEnd = now + bridgeTotal;
-    const trilhaBleedLevel = 0.92;
-    const trilhaFinalGain = 1.22;
+    const bridgeTotal = clamp(bridgeSeconds, 0.28, 0.95);
+    scheduleEqualPowerCrossfade(part1GainNode, trilhaGainNode, bridgeTotal);
+  }
 
-    try {
-      part1GainNode.gain.cancelScheduledValues(now);
-      trilhaGainNode.gain.cancelScheduledValues(now);
-
-      const trNow = clamp(trilhaGainNode.gain.value, 0, 2);
-      trilhaGainNode.gain.setValueAtTime(trNow, now);
-      trilhaGainNode.gain.linearRampToValueAtTime(trilhaBleedLevel, tBleedEnd);
-      trilhaGainNode.gain.linearRampToValueAtTime(trilhaFinalGain, tEnd);
-
-      part1GainNode.gain.setValueAtTime(1, now);
-      part1GainNode.gain.setValueAtTime(1, tBleedEnd);
-      part1GainNode.gain.linearRampToValueAtTime(0, tEnd);
-    } catch (e) {
-      setGainValue(part1GainNode, 0, bridgeTotal);
-      setGainValue(trilhaGainNode, 1, bridgeTotal);
-    }
+  /**
+   * Trilha → PT2: mesmo intervalo do blend visual; equal-power para volume estável no cruzamento.
+   */
+  function scheduleTrilhaPart2Handoff(crossfadeSeconds) {
+    if (!audioContext || !trilhaGainNode || !part2GainNode) return;
+    const dur = clamp(crossfadeSeconds, 0.22, 1.55);
+    scheduleEqualPowerCrossfade(trilhaGainNode, part2GainNode, dur);
   }
 
   function setupMixedAudioTrack(targetStream, mediaElements, refs) {
@@ -433,12 +489,11 @@
     photoSegmentStarted = false;
     part1PausedAfterIntro = false;
     trilhaStarted = false;
-    trilhaPreRoll = false;
     photoPhaseSeconds = INTRO_TOTAL_SECONDS;
-    trilhaFadeOutScheduled = false;
-    part2CrossfadeFreezeDone = false;
+    part2CrossfadeAudioStarted = false;
     part2Primed = false;
     part2Started = false;
+    lastProgressEmitT = 0;
     currentResolve = null;
     currentReject = null;
     state = null;
@@ -505,7 +560,8 @@
   }
 
   /**
-   * Dissolve PT1 → foto: sempre uma camada em 100% evita washout/branco no meio.
+   * PT1 → foto: vídeo opaco em baixo, foto por cima com alfa = photoBlend.
+   * Resultado = foto·b + vídeo·(1−b), sem troca de camada dominante no meio (evita piscada).
    */
   function renderPt1PhotoCrossfade(
     ctx,
@@ -516,38 +572,25 @@
   ) {
     const w = canvas.width;
     const h = canvas.height;
+    const b = clamp(photoBlend, 0, 1);
     ctx.fillStyle = BG_COLOR;
     ctx.fillRect(0, 0, w, h);
-
-    if (photoBlend <= 0.5) {
-      if (videoPart1) {
-        try {
-          ctx.drawImage(videoPart1, 0, 0, w, h);
-        } catch (e) {}
-      }
-      if (image && photoBlend > 0.002) {
-        ctx.save();
-        ctx.globalAlpha = photoBlend * 2;
-        drawPhotoWithEffects(ctx, canvas, image, ZOOM_START_SCALE, 0);
-        ctx.restore();
-      }
-    } else {
-      if (image) {
-        drawPhotoWithEffects(ctx, canvas, image, ZOOM_START_SCALE, 0);
-      }
-      if (videoPart1) {
-        ctx.save();
-        ctx.globalAlpha = (1 - photoBlend) * 2;
-        try {
-          ctx.drawImage(videoPart1, 0, 0, w, h);
-        } catch (e) {}
-        ctx.restore();
-      }
+    if (videoPart1) {
+      try {
+        ctx.drawImage(videoPart1, 0, 0, w, h);
+      } catch (e) {}
+    }
+    if (image && b > 0.001) {
+      ctx.save();
+      ctx.globalAlpha = b;
+      drawPhotoWithEffects(ctx, canvas, image, ZOOM_START_SCALE, 0);
+      ctx.restore();
     }
   }
 
   /**
-   * Crossfade foto → vídeo 2: mesmo padrão que PT1 → foto (camada dominante, evita washout).
+   * Foto → PT2: vídeo opaco em baixo, foto por cima com alfa (1−vb)·fadeIn.
+   * Mesma lógica que PT1→foto: mistura linear real, menos piscada na troca de fase.
    */
   function renderPhotoVideo2Crossfade(
     ctx,
@@ -572,33 +615,19 @@
     const zoomT = clamp(introElapsed / ZOOM_TOTAL_SECONDS, 0, 1);
     const zoomScale = lerp(ZOOM_START_SCALE, ZOOM_END_SCALE, zoomT);
 
-    if (videoBlend <= 0.5) {
-      if (image) {
-        ctx.save();
-        ctx.globalAlpha = fadeInT;
-        drawPhotoWithEffects(ctx, canvas, image, zoomScale, 0);
-        ctx.restore();
-      }
-      if (videoPart2 && videoBlend > 0.002) {
-        ctx.save();
-        ctx.globalAlpha = videoBlend * 2;
-        try {
-          ctx.drawImage(videoPart2, 0, 0, w, h);
-        } catch (e) {}
-        ctx.restore();
-      }
-    } else {
-      if (videoPart2) {
-        try {
-          ctx.drawImage(videoPart2, 0, 0, w, h);
-        } catch (e) {}
-      }
-      if (image && (1 - videoBlend) > 0.002) {
-        ctx.save();
-        ctx.globalAlpha = (1 - videoBlend) * 2 * fadeInT;
-        drawPhotoWithEffects(ctx, canvas, image, zoomScale, 0);
-        ctx.restore();
-      }
+    const vb = clamp(videoBlend, 0, 1);
+    const photoTopAlpha = (1 - vb) * fadeInT;
+
+    if (videoPart2) {
+      try {
+        ctx.drawImage(videoPart2, 0, 0, w, h);
+      } catch (e) {}
+    }
+    if (image && photoTopAlpha > 0.001) {
+      ctx.save();
+      ctx.globalAlpha = photoTopAlpha;
+      drawPhotoWithEffects(ctx, canvas, image, zoomScale, 0);
+      ctx.restore();
     }
   }
 
@@ -670,7 +699,15 @@
 
     const elapsedSeconds = (timestamp - startTimestamp) / 1000;
 
-    const totalExpected = part1Duration + photoPhaseSeconds + part2Duration;
+    /* Na foto: PT2 toca PHOTO_PT2_AUDIO_LEAD_S (pré-roll) + PHOTO_PT2_CROSSFADE_S — não repetir na cauda. */
+    const part2OverlapInPhoto =
+      PHOTO_PT2_CROSSFADE_S + PHOTO_PT2_AUDIO_LEAD_S;
+    const part2TimelineTail =
+      videoPart2 && part2Duration > part2OverlapInPhoto + 0.02
+        ? part2Duration - part2OverlapInPhoto
+        : part2Duration;
+    const totalExpected =
+      part1Duration + photoPhaseSeconds + Math.max(0.05, part2TimelineTail);
 
     let progress = clamp(elapsedSeconds / totalExpected, 0, 0.99);
 
@@ -720,7 +757,7 @@
           crossfadeDur > 0.001
             ? (elapsedSeconds - crossfadeStart) / crossfadeDur
             : 1;
-        const photoBlend = smoothstep01(rawT);
+        const photoBlend = smootherstep01(rawT);
         setGainValue(part1GainNode, 1, 0);
         setGainValue(trilhaGainNode, 0, 0);
         setGainValue(part2GainNode, 0, 0);
@@ -734,15 +771,14 @@
           audioContext.resume().catch(() => {});
         }
         if (audioTrack) {
-          trilhaPreRoll = true;
           audioTrack.loop = false;
-          audioTrack.currentTime = TRILHA_START_OFFSET_S;
-          playMediaElement(audioTrack);
-          setGainValue(
-            trilhaGainNode,
-            TRILHA_AMBIENT_HOLD_GAIN,
-            TRILHA_AMBIENT_RAMP_S
-          );
+          /* Não dar play() ainda: senão currentTime avança mudo e o “r” no início do arquivo
+           * passa antes do handoff → micro-silêncio após “aprender”. */
+          setGainValue(trilhaGainNode, 0, 0);
+          try {
+            audioTrack.pause();
+            audioTrack.currentTime = TRILHA_START_OFFSET_S;
+          } catch (e) {}
         }
       }
       const trilhaStartAt =
@@ -751,52 +787,71 @@
         trilhaStartAt + PT1_TRILHA_AUDIO_BRIDGE_S + 0.06;
       if (!part1PausedAfterIntro && introElapsed >= part1PauseAfter) {
         part1PausedAfterIntro = true;
-        if (videoPart1) {
+        const v1 = videoPart1;
+        /* pause() no mesmo tick do desenho pode travar o descodificador — adiar 1 frame. */
+        requestAnimationFrame(() => {
+          if (!isRecording || !v1) return;
           try {
-            videoPart1.pause();
+            v1.pause();
           } catch (e) {}
-        }
+        });
       }
       if (!trilhaStarted && introElapsed >= trilhaStartAt) {
         trilhaStarted = true;
         if (audioTrack) {
-          if (!trilhaPreRoll) {
-            audioTrack.loop = false;
-            audioTrack.currentTime = TRILHA_START_OFFSET_S;
-            playMediaElement(audioTrack);
-          }
+          audioTrack.currentTime = TRILHA_START_OFFSET_S;
+          playMediaElement(audioTrack);
           scheduleSmoothPt1TrilhaHandoff(PT1_TRILHA_AUDIO_BRIDGE_S);
         } else {
           setGainValue(part1GainNode, 0, AUDIO_FADE_INTO_PHOTO_S);
         }
       }
-      if (
-        audioTrack &&
-        trilhaGainNode &&
-        !trilhaFadeOutScheduled &&
-        introElapsed >= photoPhaseSeconds - TRILHA_FINALE_FADE_S
-      ) {
-        trilhaFadeOutScheduled = true;
-        setGainValue(trilhaGainNode, 0, TRILHA_FINALE_FADE_S);
-      }
       const crossfadeStartIntro = photoPhaseSeconds - PHOTO_PT2_CROSSFADE_S;
+      const audioHandoffIntro = Math.max(
+        0,
+        crossfadeStartIntro - PHOTO_PT2_AUDIO_LEAD_S
+      );
+      const pt2AudioCrossfadeDur = Math.max(
+        0.28,
+        PHOTO_PT2_CROSSFADE_S + PHOTO_PT2_AUDIO_LEAD_S
+      );
+
+      if (
+        introElapsed >= audioHandoffIntro &&
+        videoPart2 &&
+        videoPart2.readyState >= 2
+      ) {
+        if (!part2CrossfadeAudioStarted) {
+          part2CrossfadeAudioStarted = true;
+          part2Primed = true;
+          try {
+            videoPart2.currentTime = 0;
+            videoPart2.play().catch(() => {});
+          } catch (e) {}
+          if (audioTrack && trilhaGainNode && part2GainNode) {
+            scheduleTrilhaPart2Handoff(pt2AudioCrossfadeDur);
+          } else {
+            setGainValue(trilhaGainNode, 0, pt2AudioCrossfadeDur);
+            setGainValue(part2GainNode, 1, pt2AudioCrossfadeDur);
+          }
+        }
+      }
+
       if (
         introElapsed >= crossfadeStartIntro &&
         videoPart2 &&
         videoPart2.readyState >= 2
       ) {
-        if (!part2CrossfadeFreezeDone) {
-          part2CrossfadeFreezeDone = true;
-          try {
-            videoPart2.pause();
-            videoPart2.currentTime = 0;
-          } catch (e) {}
-        }
+        const visWin = Math.max(0.08, PHOTO_PT2_CROSSFADE_S * PHOTO_PT2_VISUAL_BLEND_COMPLETE);
         const rawT =
-          PHOTO_PT2_CROSSFADE_S > 0.001
-            ? (introElapsed - crossfadeStartIntro) / PHOTO_PT2_CROSSFADE_S
+          visWin > 0.001
+            ? clamp(
+                (introElapsed - crossfadeStartIntro) / visWin,
+                0,
+                1
+              )
             : 1;
-        const videoBlend = smoothstep01(rawT);
+        const videoBlend = smootherstep01(rawT);
         renderPhotoVideo2Crossfade(
           ctx,
           canvas,
@@ -806,7 +861,12 @@
           videoBlend,
           { skipInitialFade: crossfadeDur > 0.04 }
         );
-      } else if (!part2Primed && videoPart2 && introElapsed >= 0.2) {
+      } else if (
+        !part2Primed &&
+        videoPart2 &&
+        introElapsed >= 0.2 &&
+        introElapsed < audioHandoffIntro
+      ) {
         part2Primed = true;
         const oldMuted = videoPart2.muted;
         videoPart2.muted = true;
@@ -824,19 +884,27 @@
             videoPart2.muted = oldMuted;
           });
       }
-      if (
+      const needPhotoStillOrIntro =
         introElapsed < crossfadeStartIntro ||
-        (introElapsed >= crossfadeStartIntro && (!videoPart2 || videoPart2.readyState < 2))
-      ) {
+        (introElapsed >= crossfadeStartIntro &&
+          (!videoPart2 || videoPart2.readyState < 2));
+      if (needPhotoStillOrIntro) {
         const skipIntroFadeOpt = { skipInitialFade: crossfadeDur > 0.04 };
-        renderIntro(
-          ctx,
-          canvas,
-          image,
-          collaboratorName,
-          introElapsed,
-          skipIntroFadeOpt
-        );
+        if (
+          introElapsed < PT1_TO_PHOTO_VISUAL_SEAM_S &&
+          videoPart1
+        ) {
+          renderPt1PhotoCrossfade(ctx, canvas, videoPart1, image, 1);
+        } else {
+          renderIntro(
+            ctx,
+            canvas,
+            image,
+            collaboratorName,
+            introElapsed,
+            skipIntroFadeOpt
+          );
+        }
       }
     } else {
       const sincePart2Start =
@@ -847,21 +915,40 @@
         const playVideo = () => {
           try {
             if (audioTrack) {
-              audioTrack.pause();
-              audioTrack.currentTime = 0;
+              if (part2CrossfadeAudioStarted) {
+                /* pause() no elemento corta o MediaElementSource na hora — mata o fim do
+                 * crossfade e pode gerar mudo. Só pausar a trilha um pouco depois. */
+                window.setTimeout(() => {
+                  try {
+                    audioTrack.pause();
+                    audioTrack.currentTime = 0;
+                  } catch (e2) {}
+                }, 380);
+              } else {
+                audioTrack.pause();
+                audioTrack.currentTime = 0;
+              }
             }
           } catch (e) {}
-          setGainValue(trilhaGainNode, 0, 0);
-          setGainValue(part2GainNode, 0, 0);
-          try {
-            videoPart2.pause();
-            videoPart2.currentTime = 0;
-          } catch (e) {}
-          videoPart2.play().catch(() => {});
-          if (audioTrack) {
-            setGainValue(part2GainNode, 1, 0.05);
+          if (part2CrossfadeAudioStarted) {
+            /* Não chamar setGainValue aqui: cancelScheduledValues cortaria o fim da curva
+             * equal-power e causa micro-mudo entre trilha e PT2. */
+            if (videoPart2.paused) {
+              videoPart2.play().catch(() => {});
+            }
           } else {
-            setGainValue(part2GainNode, 1, PART2_SOLO_AUDIO_FADE_S);
+            setGainValue(trilhaGainNode, 0, 0);
+            setGainValue(part2GainNode, 0, 0);
+            try {
+              videoPart2.pause();
+              videoPart2.currentTime = 0;
+            } catch (e) {}
+            videoPart2.play().catch(() => {});
+            if (audioTrack) {
+              setGainValue(part2GainNode, 1, 0.05);
+            } else {
+              setGainValue(part2GainNode, 1, PART2_SOLO_AUDIO_FADE_S);
+            }
           }
         };
         if (videoPart2.readyState >= 2) {
@@ -883,22 +970,26 @@
         });
       }
 
-      if (part2Duration) {
-        const clampedVideoTime = clamp(
-          sincePart2Start,
-          0,
-          part2Duration
-        );
+      if (part2TimelineTail > 0) {
+        const clampedWall = clamp(sincePart2Start, 0, part2TimelineTail);
         progress = clamp(
-          (part1Duration + photoPhaseSeconds + clampedVideoTime) / totalExpected,
+          (part1Duration + photoPhaseSeconds + clampedWall) / totalExpected,
           0,
           0.999
         );
       }
     }
 
+    /* Fim da linha do tempo (masters fixos) — fallback se `onended` do PT2 não disparar. */
+    if (elapsedSeconds >= totalExpected - 0.01) {
+      stopRecordingInternal();
+    }
+
     if (typeof onProgress === 'function') {
-      onProgress(progress);
+      if (timestamp - lastProgressEmitT >= PROGRESS_EMIT_INTERVAL_MS) {
+        lastProgressEmitT = timestamp;
+        onProgress(progress);
+      }
     }
 
   }
@@ -908,11 +999,19 @@
       clearInterval(renderIntervalId);
       renderIntervalId = null;
     }
-    const intervalMs = 1000 / 30;
-    renderIntervalId = setInterval(() => {
-      if (!isRecording) return;
-      renderFrame(performance.now());
-    }, intervalMs);
+    if (animationFrameId) {
+      cancelAnimationFrame(animationFrameId);
+      animationFrameId = null;
+    }
+    const loop = (ts) => {
+      if (!isRecording) {
+        animationFrameId = null;
+        return;
+      }
+      renderFrame(ts);
+      animationFrameId = requestAnimationFrame(loop);
+    };
+    animationFrameId = requestAnimationFrame(loop);
   }
 
   async function startRecording(options) {
@@ -940,22 +1039,62 @@
         'Arquivos obrigatórios não encontrados ou inválidos: VIDEO PT1.mp4 e VIDEO PT2.mp4.'
       );
     }
-    part1Duration = d1;
-    part2Duration = d2;
 
-    let trilhaPlayable = 0;
+    part1Duration = PART1_DURATION_S;
+    part2Duration = PART2_DURATION_S;
+
+    let hasTrilha = false;
+    let trilhaMeta = 0;
     if (audioTrack) {
-      const td = await getDurationSafe(audioTrack);
+      trilhaMeta = await getDurationSafe(audioTrack);
       const off = TRILHA_START_OFFSET_S;
-      trilhaPlayable = td > off ? td - off : Math.max(0, td);
+      const playable = trilhaMeta > off ? trilhaMeta - off : Math.max(0, trilhaMeta);
+      hasTrilha = playable > 0.08;
     }
-    const rawPhotoPhase =
-      audioTrack && trilhaPlayable > 0.08
-        ? trilhaPlayable + PHOTO_TRILHA_BUFFER_S
-        : INTRO_TOTAL_SECONDS;
-    photoPhaseSeconds = clamp(rawPhotoPhase, PHOTO_MIN_DISPLAY_S, PHOTO_MAX_DISPLAY_S);
+    photoPhaseSeconds = computePhotoPhaseSeconds(hasTrilha && !!audioTrack);
 
-    expectedVideoDuration = part1Duration + photoPhaseSeconds + part2Duration;
+    if (Math.abs(d1 - PART1_DURATION_S) > 0.75) {
+      console.warn(
+        '[VideoRenderer] Metadados PT1:',
+        d1,
+        's — master em',
+        PART1_DURATION_S,
+        's @',
+        SOURCE_TIMECODE_FPS,
+        'fps'
+      );
+    }
+    if (Math.abs(d2 - PART2_DURATION_S) > 0.75) {
+      console.warn(
+        '[VideoRenderer] Metadados PT2:',
+        d2,
+        's — master em',
+        PART2_DURATION_S,
+        's @',
+        SOURCE_TIMECODE_FPS,
+        'fps'
+      );
+    }
+    if (audioTrack && trilhaMeta > 0 && Math.abs(trilhaMeta - TRILHA_FILE_DURATION_S) > 0.75) {
+      console.warn(
+        '[VideoRenderer] Metadados trilha:',
+        trilhaMeta,
+        's — master em',
+        TRILHA_FILE_DURATION_S,
+        's @',
+        SOURCE_TIMECODE_FPS,
+        'fps'
+      );
+    }
+
+    const part2OverlapPlan =
+      PHOTO_PT2_CROSSFADE_S + PHOTO_PT2_AUDIO_LEAD_S;
+    const part2PlannedTail =
+      videoPart2 && part2Duration > part2OverlapPlan + 0.02
+        ? part2Duration - part2OverlapPlan
+        : part2Duration;
+    expectedVideoDuration =
+      part1Duration + photoPhaseSeconds + Math.max(0.05, part2PlannedTail);
 
     configureCanvasForFormat(canvas, format || 'linkedin');
 
@@ -994,11 +1133,10 @@
         photoSegmentStarted = false;
         part1PausedAfterIntro = false;
         trilhaStarted = false;
-        trilhaPreRoll = false;
-        trilhaFadeOutScheduled = false;
-        part2CrossfadeFreezeDone = false;
+        part2CrossfadeAudioStarted = false;
         part2Primed = false;
         part2Started = false;
+        lastProgressEmitT = 0;
 
         ctx.fillStyle = BG_COLOR;
         ctx.fillRect(0, 0, canvas.width, canvas.height);

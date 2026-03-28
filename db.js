@@ -1,13 +1,24 @@
 const mysql = require('mysql2/promise');
 
-const ADMIN_EMAIL = 'comunicacao.saab@owly.com.br';
+function requiredEnv(name) {
+  const v = process.env[name];
+  if (v === undefined || String(v).trim() === '') {
+    throw new Error(
+      `Variável de ambiente obrigatória ausente: ${name}. Copie .env.example para .env e configure.`
+    );
+  }
+  return String(v).trim();
+}
+
+/** E-mail opcional: usado no seed do admin e na mensagem especial de login (error=2). */
+const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || '').trim();
 
 const pool = mysql.createPool({
-  host: process.env.DB_HOST || '147.79.91.110',
+  host: requiredEnv('DB_HOST'),
   port: Number(process.env.DB_PORT || 3306),
-  user: process.env.DB_USER || 'u829391742_saabcolabuser',
-  password: process.env.DB_PASSWORD || 'eUC|8wC4Q:',
-  database: process.env.DB_NAME || 'u829391742_saabcolab',
+  user: requiredEnv('DB_USER'),
+  password: requiredEnv('DB_PASSWORD'),
+  database: requiredEnv('DB_NAME'),
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
@@ -70,7 +81,12 @@ async function initDatabase() {
       user_id INT NULL,
       email VARCHAR(255) NULL,
       company VARCHAR(255) NULL,
-      event_type ENUM('generate_click','download_click') NOT NULL,
+      event_type ENUM(
+        'generate_click',
+        'download_click',
+        'generate_complete',
+        'linkedin_share_click'
+      ) NOT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       INDEX idx_event_type (event_type),
       INDEX idx_event_user (user_id),
@@ -78,17 +94,33 @@ async function initDatabase() {
     )
   `);
 
-  const [existingAdmin] = await pool.query(
-    'SELECT id FROM users WHERE email = ? LIMIT 1',
-    [ADMIN_EMAIL]
-  );
+  try {
+    await pool.query(`
+      ALTER TABLE metric_events
+      MODIFY COLUMN event_type ENUM(
+        'generate_click',
+        'download_click',
+        'generate_complete',
+        'linkedin_share_click'
+      ) NOT NULL
+    `);
+  } catch (e) {
+    console.warn('metric_events ENUM (pode ser ignorado se já atualizado):', e.message);
+  }
 
-  if (!existingAdmin.length) {
-    await pool.query(
-      'INSERT INTO users (email, company, role, is_active) VALUES (?, ?, ?, 1)',
-      [ADMIN_EMAIL, 'SAAB Comunicação', 'admin']
+  if (ADMIN_EMAIL) {
+    const [existingAdmin] = await pool.query(
+      'SELECT id FROM users WHERE email = ? LIMIT 1',
+      [ADMIN_EMAIL]
     );
-    console.log(`Admin inicial criado (${ADMIN_EMAIL})`);
+
+    if (!existingAdmin.length) {
+      await pool.query(
+        'INSERT INTO users (email, company, role, is_active) VALUES (?, ?, ?, 1)',
+        [ADMIN_EMAIL, 'SAAB Comunicação', 'admin']
+      );
+      console.log(`Admin inicial criado (${ADMIN_EMAIL})`);
+    }
   }
 }
 
@@ -97,4 +129,3 @@ module.exports = {
   initDatabase,
   ADMIN_EMAIL
 };
-

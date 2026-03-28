@@ -1,3 +1,4 @@
+require('dotenv').config();
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -23,10 +24,13 @@ if (!fs.existsSync(uploadsDir)) {
 }
 const upload = multer({ dest: uploadsDir });
 
+const sessionSecret =
+  process.env.SESSION_SECRET || 'dev-only-session-secret-altere-em-producao';
+
 // Configuração de sessão
 app.use(
   session({
-    secret: 'saab-videocolab-secret',
+    secret: sessionSecret,
     resave: false,
     saveUninitialized: false,
     cookie: {
@@ -65,6 +69,24 @@ function ensureCollaborator(req, res, next) {
     return next();
   }
   return res.redirect('/admin');
+}
+
+async function emailTakenByUser(email, excludeUserId) {
+  const params = excludeUserId != null ? [email, excludeUserId] : [email];
+  const sql =
+    excludeUserId != null
+      ? 'SELECT id FROM users WHERE email = ? AND id != ? LIMIT 1'
+      : 'SELECT id FROM users WHERE email = ? LIMIT 1';
+  const [rows] = await pool.query(sql, params);
+  return rows.length > 0;
+}
+
+async function emailTakenByCollaborator(email) {
+  const [rows] = await pool.query(
+    'SELECT id FROM collaborators WHERE email = ? LIMIT 1',
+    [email]
+  );
+  return rows.length > 0;
 }
 
 // Rota da dashboard
@@ -170,18 +192,22 @@ app.post(
   }
 );
 
+function insertMetricEvent(req, eventType) {
+  return pool.query(
+    'INSERT INTO metric_events (user_id, email, company, event_type) VALUES (?, ?, ?, ?)',
+    [
+      req.session.userId || null,
+      req.session.userEmail || null,
+      req.session.userCompany || 'Sem Empresa',
+      eventType
+    ]
+  );
+}
+
 app.post('/api/metrics/generate-click', ensureAuthenticated, ensureCollaborator, async (req, res) => {
   try {
     try {
-      await pool.query(
-        'INSERT INTO metric_events (user_id, email, company, event_type) VALUES (?, ?, ?, ?)',
-        [
-          req.session.userId || null,
-          req.session.userEmail || null,
-          req.session.userCompany || 'Sem Empresa',
-          'generate_click'
-        ]
-      );
+      await insertMetricEvent(req, 'generate_click');
     } catch (metricErr) {
       console.error('Aviso: falha ao registrar evento generate_click:', metricErr);
     }
@@ -192,11 +218,54 @@ app.post('/api/metrics/generate-click', ensureAuthenticated, ensureCollaborator,
   }
 });
 
+app.post('/api/metrics/generate-complete', ensureAuthenticated, ensureCollaborator, async (req, res) => {
+  try {
+    try {
+      await insertMetricEvent(req, 'generate_complete');
+    } catch (metricErr) {
+      console.error('Aviso: falha ao registrar evento generate_complete:', metricErr);
+    }
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Erro ao registrar conclusão da geração:', error);
+    res.status(500).json({ error: 'Falha ao registrar evento.' });
+  }
+});
+
+app.post('/api/metrics/linkedin-share-click', ensureAuthenticated, ensureCollaborator, async (req, res) => {
+  try {
+    try {
+      await insertMetricEvent(req, 'linkedin_share_click');
+    } catch (metricErr) {
+      console.error('Aviso: falha ao registrar linkedin_share_click:', metricErr);
+    }
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Erro ao registrar clique LinkedIn:', error);
+    res.status(500).json({ error: 'Falha ao registrar evento.' });
+  }
+});
+
+/**
+ * Regista intenção de download (sempre em metric_events).
+ * Linha em `downloads`: só para WEBM (ficheiro servido só no cliente). Em MP4 o registo
+ * fica em /api/convert-to-mp4 quando a conversão conclui — evita contagem duplicada.
+ * `deliveryOnly`: só insere em `downloads` (ex.: fallback WEBM após falha do MP4, sem novo download_click).
+ */
 app.post('/api/metrics/download-click', ensureAuthenticated, ensureCollaborator, async (req, res) => {
   try {
     const userId = req.session.userId || null;
     const email = req.session.userEmail || null;
     const company = req.session.userCompany || 'Sem Empresa';
+    if (req.body && req.body.deliveryOnly === true) {
+      await pool.query('INSERT INTO downloads (user_id, company, email) VALUES (?, ?, ?)', [
+        userId,
+        company,
+        email
+      ]);
+      return res.json({ ok: true });
+    }
+    const format = req.body && req.body.format === 'mp4' ? 'mp4' : 'webm';
     try {
       await pool.query(
         'INSERT INTO metric_events (user_id, email, company, event_type) VALUES (?, ?, ?, ?)',
@@ -205,11 +274,13 @@ app.post('/api/metrics/download-click', ensureAuthenticated, ensureCollaborator,
     } catch (metricErr) {
       console.error('Aviso: falha ao registrar evento download_click:', metricErr);
     }
-    await pool.query('INSERT INTO downloads (user_id, company, email) VALUES (?, ?, ?)', [
-      userId,
-      company,
-      email
-    ]);
+    if (format !== 'mp4') {
+      await pool.query('INSERT INTO downloads (user_id, company, email) VALUES (?, ?, ?)', [
+        userId,
+        company,
+        email
+      ]);
+    }
     res.json({ ok: true });
   } catch (error) {
     console.error('Erro ao registrar clique em baixar vídeo:', error);
@@ -227,17 +298,17 @@ app.get('/api/admin/metrics', ensureAuthenticated, ensureAdmin, async (req, res)
        FROM collaborators c
        INNER JOIN downloads d ON d.email = c.email`
     );
-    const [[generatedClicksByCollaborator]] = await pool.query(
+    const [[videoReadyCollaborators]] = await pool.query(
       `SELECT COUNT(DISTINCT email) AS total
        FROM metric_events
-       WHERE event_type = 'generate_click'
+       WHERE event_type = 'generate_complete'
          AND email IS NOT NULL
          AND email <> ''`
     );
     const [[generatedWithoutDownloadByCollaborator]] = await pool.query(
       `SELECT COUNT(DISTINCT g.email) AS total
        FROM metric_events g
-       WHERE g.event_type = 'generate_click'
+       WHERE g.event_type = 'generate_complete'
          AND g.email IS NOT NULL
          AND g.email <> ''
          AND NOT EXISTS (
@@ -251,6 +322,16 @@ app.get('/api/admin/metrics', ensureAuthenticated, ensureAdmin, async (req, res)
            FROM downloads dw
            WHERE dw.email = g.email
          )`
+    );
+    const [[linkedinShareTotal]] = await pool.query(
+      `SELECT COUNT(*) AS total FROM metric_events WHERE event_type = 'linkedin_share_click'`
+    );
+    const [[linkedinShareDistinct]] = await pool.query(
+      `SELECT COUNT(DISTINCT email) AS total
+       FROM metric_events
+       WHERE event_type = 'linkedin_share_click'
+         AND email IS NOT NULL
+         AND email <> ''`
     );
     const [byCompany] = await pool.query(
       'SELECT company, COUNT(*) AS total FROM downloads GROUP BY company ORDER BY total DESC'
@@ -294,14 +375,14 @@ app.get('/api/admin/metrics', ensureAuthenticated, ensureAdmin, async (req, res)
       { label: 'Com download', total: collaboratorsWithDownloadCount },
       { label: 'Sem download', total: collaboratorsWithoutDownloadCount }
     ];
-    const generatedCollaboratorsCount = Number(generatedClicksByCollaborator.total || 0);
+    const videoReadyCollaboratorsCount = Number(videoReadyCollaborators.total || 0);
     const generatedNoDownloadCount = Number(
       generatedWithoutDownloadByCollaborator.total || 0
     );
     const generatedNoDownloadPercent =
-      generatedCollaboratorsCount > 0
+      videoReadyCollaboratorsCount > 0
         ? Number(
-            ((generatedNoDownloadCount / generatedCollaboratorsCount) * 100).toFixed(1)
+            ((generatedNoDownloadCount / videoReadyCollaboratorsCount) * 100).toFixed(1)
           )
         : 0;
 
@@ -341,6 +422,9 @@ app.get('/api/admin/metrics', ensureAuthenticated, ensureAdmin, async (req, res)
       recentDownloadsByCompany,
       generatedNoDownloadCount,
       generatedNoDownloadPercent,
+      videoReadyCollaboratorsCount,
+      linkedinShareClicksTotal: Number(linkedinShareTotal.total || 0),
+      linkedinShareCollaboratorsDistinct: Number(linkedinShareDistinct.total || 0),
       users,
       collaborators
     });
@@ -364,6 +448,9 @@ app.post('/api/admin/users', ensureAuthenticated, ensureAdmin, async (req, res) 
   const normalizedRole = role === 'admin' ? 'admin' : 'user';
 
   try {
+    if (await emailTakenByUser(normalizedEmail)) {
+      return res.status(409).json({ error: 'E-mail já cadastrado.' });
+    }
     await pool.query(
       'INSERT INTO users (email, company, role, is_active) VALUES (?, ?, ?, 1)',
       [normalizedEmail, normalizedCompany, normalizedRole]
@@ -384,15 +471,22 @@ app.put('/api/admin/users/:id', ensureAuthenticated, ensureAdmin, async (req, re
   if (!userId || !email || !company) {
     return res.status(400).json({ error: 'Dados inválidos para atualização.' });
   }
+  const normalizedEmail = String(email).trim().toLowerCase();
   try {
+    if (await emailTakenByUser(normalizedEmail, userId)) {
+      return res.status(409).json({ error: 'E-mail já cadastrado para outro usuário.' });
+    }
     await pool.query('UPDATE users SET email = ?, company = ?, role = ? WHERE id = ?', [
-      String(email).trim().toLowerCase(),
+      normalizedEmail,
       String(company).trim(),
       role === 'admin' ? 'admin' : 'user',
       userId
     ]);
     res.json({ ok: true });
   } catch (error) {
+    if (error && error.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ error: 'E-mail já cadastrado para outro usuário.' });
+    }
     console.error('Erro ao atualizar usuário:', error);
     res.status(500).json({ error: 'Falha ao atualizar usuário.' });
   }
@@ -437,6 +531,16 @@ app.post(
         defval: ''
       });
 
+      const [userEmailsRows] = await pool.query('SELECT email FROM users');
+      const userEmailSet = new Set(
+        userEmailsRows.map((r) => String(r.email || '').trim().toLowerCase())
+      );
+      const [collabEmailsRows] = await pool.query('SELECT email FROM collaborators');
+      const collabEmailSet = new Set(
+        collabEmailsRows.map((r) => String(r.email || '').trim().toLowerCase())
+      );
+      const seenInSpreadsheet = new Set();
+
       for (const rawRow of rows) {
         const name = String(rawRow.name || rawRow.Name || rawRow.nome || rawRow.Nome || '').trim();
         const email = String(rawRow.email || rawRow.Email || '').trim().toLowerCase();
@@ -447,12 +551,23 @@ app.post(
           continue;
         }
 
+        if (seenInSpreadsheet.has(email)) {
+          skipped += 1;
+          continue;
+        }
+        if (userEmailSet.has(email) || collabEmailSet.has(email)) {
+          skipped += 1;
+          continue;
+        }
+
         try {
           await pool.query(
             'INSERT INTO collaborators (name, email, company, is_active) VALUES (?, ?, ?, 1)',
             [name, email, company]
           );
           inserted += 1;
+          seenInSpreadsheet.add(email);
+          collabEmailSet.add(email);
         } catch (error) {
           skipped += 1;
         }
@@ -473,16 +588,26 @@ app.post('/api/admin/collaborators', ensureAuthenticated, ensureAdmin, async (re
   if (!name || !email || !company) {
     return res.status(400).json({ error: 'Nome, email e empresa são obrigatórios.' });
   }
+  const normalizedEmail = String(email).trim().toLowerCase();
   try {
+    if (await emailTakenByUser(normalizedEmail)) {
+      return res.status(409).json({
+        error:
+          'Este e-mail já está cadastrado como usuário. Utilize outro e-mail ou altere o cadastro de usuários.'
+      });
+    }
+    if (await emailTakenByCollaborator(normalizedEmail)) {
+      return res.status(409).json({ error: 'E-mail já cadastrado como colaborador.' });
+    }
     await pool.query('INSERT INTO collaborators (name, email, company, is_active) VALUES (?, ?, ?, 1)', [
       String(name).trim(),
-      String(email).trim().toLowerCase(),
+      normalizedEmail,
       String(company).trim()
     ]);
     res.json({ ok: true });
   } catch (error) {
     if (error && error.code === 'ER_DUP_ENTRY') {
-      return res.status(409).json({ error: 'E-mail já cadastrado.' });
+      return res.status(409).json({ error: 'E-mail já cadastrado como colaborador.' });
     }
     console.error('Erro ao cadastrar colaborador:', error);
     res.status(500).json({ error: 'Falha ao cadastrar colaborador.' });
@@ -533,15 +658,46 @@ app.post(
         email: String(rawRow.email || rawRow.Email || '').trim().toLowerCase(),
         company: String(rawRow.company || rawRow.Company || '').trim()
       }));
-      const validCount = rows.filter((rawRow) => {
+
+      const [userEmailsRows] = await pool.query('SELECT email FROM users');
+      const userEmailSet = new Set(
+        userEmailsRows.map((r) => String(r.email || '').trim().toLowerCase())
+      );
+      const [collabEmailsRows] = await pool.query('SELECT email FROM collaborators');
+      const collabEmailSet = new Set(
+        collabEmailsRows.map((r) => String(r.email || '').trim().toLowerCase())
+      );
+      const seenInSpreadsheet = new Set();
+      const simulatedCollabSet = new Set(collabEmailSet);
+
+      let validCount = 0;
+      let importableRows = 0;
+      let skippedDuplicateRows = 0;
+
+      for (const rawRow of rows) {
         const name = String(rawRow.name || rawRow.Name || rawRow.nome || rawRow.Nome || '').trim();
-        const email = String(rawRow.email || rawRow.Email || '').trim();
+        const em = String(rawRow.email || rawRow.Email || '').trim().toLowerCase();
         const company = String(rawRow.company || rawRow.Company || '').trim();
-        return !!name && !!email && !!company;
-      }).length;
+        if (!name || !em || !company) continue;
+        validCount += 1;
+        if (seenInSpreadsheet.has(em)) {
+          skippedDuplicateRows += 1;
+          continue;
+        }
+        if (userEmailSet.has(em) || simulatedCollabSet.has(em)) {
+          skippedDuplicateRows += 1;
+          continue;
+        }
+        seenInSpreadsheet.add(em);
+        simulatedCollabSet.add(em);
+        importableRows += 1;
+      }
+
       res.json({
         totalRows: rows.length,
         validRows: validCount,
+        importableRows,
+        skippedDuplicateRows,
         previewRows
       });
     } catch (error) {

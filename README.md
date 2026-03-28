@@ -62,6 +62,43 @@ saab-videocolab
   - `HTMLMediaElement.captureStream()`
   - `MediaRecorder`
 
+## Variáveis de ambiente
+
+Antes de subir o servidor, copie o exemplo e preencha com os dados do seu MySQL:
+
+```bash
+cp .env.example .env
+```
+
+O ficheiro `.env` **não** deve ser commitado (já está no `.gitignore`). No GitHub use apenas `.env.example` sem segredos reais.
+
+| Variável | Obrigatório | Descrição |
+|----------|-------------|-----------|
+| `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` | Sim | Ligação ao MySQL |
+| `DB_PORT` | Não | Predefinição: `3306` |
+| `ADMIN_EMAIL` | Não | Se definido, cria este utilizador admin na primeira execução (se ainda não existir) e usa a mensagem especial de login para esse e-mail |
+| `SESSION_SECRET` | Recomendado em produção | Segredo das sessões; em desenvolvimento existe um fallback fraco |
+| `PORT` | Não | Predefinição: `3001` |
+
+> **Segurança:** se este repositório já chegou a ter passwords MySQL no código e vai ficar público, **altere a password da base de dados** após o primeiro push — o histórico do Git pode conservar versões antigas.
+
+### Publicar no GitHub
+
+1. Confirme que `.env` não está listado em `git status` e que não vai commitar ficheiros enormes (vídeos) sem querer.
+2. Crie o repositório vazio no GitHub (sem README, se já tiver um local).
+3. Na pasta do projeto:
+
+```bash
+git add -A
+git status
+git commit -m "Versão inicial preparada para GitHub (segredos só em .env)"
+git branch -M main
+git remote add origin https://github.com/SEU_USUARIO/SEU_REPO.git
+git push -u origin main
+```
+
+Se o remoto já existir com histórico antigo que contenha segredos, considere `git filter-repo` ou rotação de credenciais.
+
 ## Instalação
 
 Na pasta raiz do projeto (`saab-videocolab`):
@@ -102,8 +139,7 @@ http://localhost:3001
 
 ## Configuração de e-mails permitidos
 
-Agora os e-mails/senhas permitidos vêm da tabela `users` no banco MySQL.
-E-mail admin fixo: `comunicacao.saab@owly.com.br`.
+O login usa apenas o e-mail: contas ativas nas tabelas `users` (área admin) e `collaborators` (dashboard de vídeo) podem entrar. O e-mail em `ADMIN_EMAIL` (`.env`) é opcional: serve ao seed do primeiro admin e a uma mensagem de erro específica no login quando alguém tenta esse endereço sem estar registado.
 
 ## Fluxo de uso
 
@@ -128,5 +164,5 @@ E-mail admin fixo: `comunicacao.saab@owly.com.br`.
 - A captura é iniciada antes da introdução, grava a intro completa, a transição e segue até o final do vídeo institucional.
 - O navegador gera um arquivo `webm`, que é então enviado ao backend e **convertido para MP4** usando FFmpeg.
 - É necessário ter o **FFmpeg instalado e acessível no PATH** do sistema operacional para que a conversão para MP4 funcione.
-- No primeiro start, o sistema cria automaticamente o usuário admin (`comunicacao.saab@owly.com.br`) com senha padrão `Admin@123` (ou valor de `ADMIN_DEFAULT_PASSWORD`).
+- Se `ADMIN_EMAIL` estiver definido no `.env` e ainda não existir esse utilizador em `users`, o primeiro arranque cria esse registo como admin (sem fluxo de palavra-passe no login atual — apenas e-mail).
 

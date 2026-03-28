@@ -48,6 +48,9 @@
   const kpiCollaborators = document.getElementById('kpi-collaborators');
   const kpiDownloads = document.getElementById('kpi-downloads');
   const kpiGenerateNoDownload = document.getElementById('kpi-generate-no-download');
+  const kpiGenerateNoDownloadHint = document.getElementById('kpi-generate-no-download-hint');
+  const kpiLinkedinShare = document.getElementById('kpi-linkedin-share');
+  const kpiLinkedinShareHint = document.getElementById('kpi-linkedin-share-hint');
   const statusPieCanvas = document.getElementById('downloads-status-pie-chart');
   const statusPieCtx = statusPieCanvas?.getContext('2d');
   const dailyBarCanvas = document.getElementById('downloads-daily-bar-chart');
@@ -472,6 +475,21 @@
         const percent = Number(data.generatedNoDownloadPercent || 0);
         kpiGenerateNoDownload.textContent = `${count} (${percent}%)`;
       }
+      if (kpiGenerateNoDownloadHint) {
+        const ready = Number(data.videoReadyCollaboratorsCount || 0);
+        kpiGenerateNoDownloadHint.textContent =
+          ready > 0
+            ? `De ${ready} colaborador(es) que concluíram a geração do vídeo`
+            : 'Contagem após vídeo gerado com sucesso (nova versão)';
+      }
+      if (kpiLinkedinShare) {
+        kpiLinkedinShare.textContent = String(data.linkedinShareClicksTotal || 0);
+      }
+      if (kpiLinkedinShareHint) {
+        const distinct = Number(data.linkedinShareCollaboratorsDistinct || 0);
+        kpiLinkedinShareHint.textContent =
+          distinct > 0 ? `${distinct} colaborador(es) distintos` : 'Ícone de compartilhar no LinkedIn';
+      }
       drawPie(statusPieCtx, statusPieCanvas, data.byDownloadStatus || [], 'Sem dados de usuários');
       drawDailyBars(data.downloadsByDay || []);
       drawPie(
@@ -617,7 +635,15 @@
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Falha no preview');
         if (importPreviewSummary) {
-          importPreviewSummary.textContent = `Total linhas: ${data.totalRows} | Linhas válidas: ${data.validRows}`;
+          const parts = [
+            `Total linhas: ${data.totalRows}`,
+            `Linhas válidas: ${data.validRows}`,
+            typeof data.importableRows === 'number' ? `Inseríveis: ${data.importableRows}` : null,
+            typeof data.skippedDuplicateRows === 'number'
+              ? `Duplicados (ignorados): ${data.skippedDuplicateRows}`
+              : null
+          ].filter(Boolean);
+          importPreviewSummary.textContent = parts.join(' | ');
         }
         if (importPreviewList) {
           importPreviewList.innerHTML = (data.previewRows || [])

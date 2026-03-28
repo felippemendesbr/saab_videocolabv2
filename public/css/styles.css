@@ -19,10 +19,15 @@
   --vc-surface: #ffffff;
 }
 
-html,
-body {
-  height: 100%;
+/* Altura em % no body limita ao viewport e, ao rolar, aparece só o fundo do html.
+   min-height no body deixa a página crescer com o conteúdo; a textura acompanha. */
+html {
   background-color: #13163b;
+}
+
+body {
+  min-height: 100vh;
+  min-height: 100dvh;
 }
 
 body.vc-body {
@@ -31,12 +36,23 @@ body.vc-body {
   color: var(--vc-text);
 }
 
+/* Mesmo padrão no html nas páginas com BG, por segurança em margens/overflow. */
+html:has(body.vc-generator-page),
+html:has(body.vc-login-page) {
+  background-color: #13163b;
+  background-image: url('/assets/BG.png');
+  background-size: 720px auto;
+  background-position: top left;
+  background-repeat: repeat;
+}
+
 .vc-generator-page {
   background-color: #13163b;
   background-image: url('/assets/BG.png');
   background-size: 720px auto;
   background-position: top left;
   background-repeat: repeat;
+  min-height: 100vh;
   min-height: 100dvh;
 }
 
@@ -51,6 +67,7 @@ body.vc-body {
   background-size: 720px auto;
   background-position: top left;
   background-repeat: repeat;
+  min-height: 100vh;
   min-height: 100dvh;
 }
 
@@ -468,29 +485,88 @@ body.vc-body {
 
 #result-actions {
   display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 1rem;
+  width: min(560px, 100%);
+  margin: 1.6rem auto 0;
+}
+
+#result-actions .vc-button-row {
+  display: flex;
   flex-direction: row;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  flex-wrap: wrap;
   gap: 0.75rem;
-  width: min(460px, 100%);
-  margin: 1.6rem auto 0;
 }
 
 #result-actions[hidden] {
   display: none !important;
 }
 
-#result-actions .vc-button {
+#result-actions .vc-button-row .vc-button {
   flex: 1 1 220px;
 }
 
 #result-actions .vc-linkedin-share {
-  flex-basis: 100%;
+  width: 100%;
 }
 
 .vc-linkedin-share {
-  margin-top: 0.4rem;
+  margin-top: 0.25rem;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.vc-share-post-box {
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.22);
+  padding: 1rem 1rem 0.85rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.vc-share-post-heading {
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #e6e9ff;
+  margin-bottom: 0.35rem;
+}
+
+.vc-share-post-hint {
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: rgba(238, 241, 255, 0.82);
+  margin-bottom: 0.65rem;
+}
+
+.vc-share-post-text {
+  font-family: inherit;
+  font-size: 0.84rem;
+  line-height: 1.55;
+  color: #f4f6ff;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0 0 0.85rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  background: rgba(3, 5, 20, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.vc-share-post-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding-bottom: 0.15rem;
+}
+
+.vc-share-networks {
   text-align: center;
 }
 
@@ -525,16 +601,6 @@ body.vc-body {
   box-shadow: 0 6px 14px rgba(10, 102, 194, 0.35);
 }
 
-.vc-share-icon-facebook {
-  background: #1877f2;
-  box-shadow: 0 6px 14px rgba(24, 119, 242, 0.35);
-}
-
-.vc-share-icon-instagram {
-  background: linear-gradient(135deg, #f58529, #dd2a7b, #8134af, #515bd4);
-  box-shadow: 0 6px 14px rgba(129, 52, 175, 0.35);
-}
-
 .vc-share-icon:hover {
   filter: brightness(1.08);
 }
@@ -550,23 +616,25 @@ body.vc-body {
 }
 
 .vc-share-copy-btn {
-  margin: 0.7rem auto 0;
-  border: 1px solid rgba(255, 255, 255, 0.45);
-  background: rgba(255, 255, 255, 0.08);
-  color: #ffffff;
-  padding: 0.36rem 0.74rem;
+  margin: 0;
+  border: 1px solid rgba(185, 177, 154, 0.55);
+  background: var(--vc-secondary);
+  color: var(--vc-primary);
+  padding: 0.45rem 1rem;
   border-radius: 999px;
-  font-size: 0.76rem;
+  font-size: 0.82rem;
+  font-weight: 700;
   cursor: pointer;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.35rem;
-  width: fit-content;
+  gap: 0.4rem;
+  width: auto;
+  transition: background-color 0.15s ease, filter 0.15s ease;
 }
 
 .vc-share-copy-btn:hover {
-  background: rgba(255, 255, 255, 0.16);
+  background: var(--vc-secondary-strong);
 }
 
 .vc-share-copy-btn svg {
@@ -951,7 +1019,7 @@ body.vc-body {
 
 .vc-admin-kpis {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 0.8rem;
   margin-bottom: 1rem;
 }
@@ -1024,6 +1092,13 @@ body.vc-body {
   font-size: 1.7rem;
   font-weight: bold;
   color: #2d2d2d;
+}
+
+.vc-kpi-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: #888;
 }
 
 /* Layout responsivo */

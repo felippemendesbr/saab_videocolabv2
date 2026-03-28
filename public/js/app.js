@@ -6,9 +6,8 @@
   const newVideoButton = document.getElementById('new-video-button');
   const linkedinShare = document.getElementById('linkedin-share');
   const linkedinShareLink = document.getElementById('linkedin-share-link');
-  const facebookShareLink = document.getElementById('facebook-share-link');
-  const instagramShareLink = document.getElementById('instagram-share-link');
   const shareCopyButton = document.getElementById('share-copy-button');
+  const sharePostText = document.getElementById('share-post-text');
   const resultActions = document.getElementById('result-actions');
   const progressContainer = document.getElementById('progress-container');
   const progressBarInner = document.getElementById('progress-bar-inner');
@@ -43,11 +42,14 @@
     `#SaabBrasil\n` +
     `@SaabBrasil`;
 
-  function trackMetric(eventType) {
+  function trackMetric(eventType, body) {
     if (!eventType) return Promise.resolve();
+    const payload =
+      body && typeof body === 'object' && Object.keys(body).length ? body : {};
     return fetch(`/api/metrics/${eventType}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
     })
       .then(() => {})
       .catch(() => {});
@@ -146,7 +148,7 @@
     downloadButton.disabled = true;
     downloadButton.textContent = 'Preparando download...';
 
-    trackMetric('download-click').finally(async () => {
+    trackMetric('download-click', { format: DOWNLOAD_OUTPUT_FORMAT }).finally(async () => {
       try {
         if (DOWNLOAD_OUTPUT_FORMAT === 'mp4') {
           downloadButton.textContent = 'Convertendo para MP4...';
@@ -157,6 +159,7 @@
       } catch (error) {
         console.error('Falha na conversão para MP4. Mantendo download em WEBM:', error);
         alert('Não foi possível converter para MP4 agora. O download será feito em WEBM.');
+        await trackMetric('download-click', { deliveryOnly: true });
       }
       triggerBlobDownload(lastRecordedBlob, 'video-colaborador.webm');
     }).finally(() => {
@@ -207,14 +210,22 @@
     return response.blob();
   }
 
+  function getSharePostPlainText() {
+    if (sharePostText && typeof sharePostText.textContent === 'string') {
+      return sharePostText.textContent.trim();
+    }
+    return LINKEDIN_SHARE_TEXT;
+  }
+
   function copyLinkedinShareText() {
     if (!navigator.clipboard || !navigator.clipboard.writeText) {
       return Promise.reject(new Error('Clipboard API não disponível.'));
     }
-    return navigator.clipboard.writeText(LINKEDIN_SHARE_TEXT);
+    return navigator.clipboard.writeText(getSharePostPlainText());
   }
 
   function handleSocialShareClick(networkName) {
+    trackMetric('linkedin-share-click');
     copyLinkedinShareText()
       .then(() => {
         alert(`Texto copiado! No ${networkName}, cole com Ctrl+V e anexe o vídeo.`);
@@ -441,26 +452,14 @@
       });
     }
 
-    if (facebookShareLink) {
-      facebookShareLink.addEventListener('click', () => {
-        handleSocialShareClick('Facebook');
-      });
-    }
-
-    if (instagramShareLink) {
-      instagramShareLink.addEventListener('click', () => {
-        handleSocialShareClick('Instagram');
-      });
-    }
-
     if (shareCopyButton) {
       shareCopyButton.addEventListener('click', () => {
         copyLinkedinShareText()
           .then(() => {
-            alert('Texto copiado novamente com sucesso!');
+            alert('Texto copiado! Cole na rede social (Ctrl+V) e anexe o vídeo.');
           })
           .catch(() => {
-            alert('Não foi possível copiar automaticamente. Copie manualmente o texto sugerido.');
+            alert('Não foi possível copiar automaticamente. Selecione o texto na caixa acima e copie manualmente (Ctrl+C).');
           });
       });
     }
