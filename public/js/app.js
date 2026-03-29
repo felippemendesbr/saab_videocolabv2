@@ -6,6 +6,8 @@
   const newVideoButton = document.getElementById('new-video-button');
   const linkedinShare = document.getElementById('linkedin-share');
   const linkedinShareLink = document.getElementById('linkedin-share-link');
+  const facebookShareLink = document.getElementById('facebook-share-link');
+  const instagramShareLink = document.getElementById('instagram-share-link');
   const shareCopyButton = document.getElementById('share-copy-button');
   const sharePostText = document.getElementById('share-post-text');
   const resultActions = document.getElementById('result-actions');
@@ -449,6 +451,16 @@
     if (linkedinShareLink) {
       linkedinShareLink.addEventListener('click', () => {
         handleSocialShareClick('LinkedIn');
+      });
+    }
+    if (facebookShareLink) {
+      facebookShareLink.addEventListener('click', () => {
+        handleSocialShareClick('Facebook');
+      });
+    }
+    if (instagramShareLink) {
+      instagramShareLink.addEventListener('click', () => {
+        handleSocialShareClick('Instagram');
       });
     }
 

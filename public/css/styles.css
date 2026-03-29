@@ -601,6 +601,16 @@ html:has(body.vc-login-page) {
   box-shadow: 0 6px 14px rgba(10, 102, 194, 0.35);
 }
 
+.vc-share-icon-facebook {
+  background: #1877f2;
+  box-shadow: 0 6px 14px rgba(24, 119, 242, 0.35);
+}
+
+.vc-share-icon-instagram {
+  background: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%);
+  box-shadow: 0 6px 14px rgba(188, 24, 136, 0.3);
+}
+
 .vc-share-icon:hover {
   filter: brightness(1.08);
 }
