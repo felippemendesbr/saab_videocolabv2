@@ -227,7 +227,15 @@
   }
 
   function handleSocialShareClick(networkName) {
-    trackMetric('linkedin-share-click');
+    const shareMetricByNetwork = {
+      LinkedIn: 'linkedin-share-click',
+      Facebook: 'facebook-share-click',
+      Instagram: 'instagram-share-click'
+    };
+    const metric = shareMetricByNetwork[networkName];
+    if (metric) {
+      trackMetric(metric);
+    }
     copyLinkedinShareText()
       .then(() => {
         alert(`Texto copiado! No ${networkName}, cole com Ctrl+V e anexe o vídeo.`);

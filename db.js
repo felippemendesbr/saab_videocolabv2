@@ -85,7 +85,9 @@ async function initDatabase() {
         'generate_click',
         'download_click',
         'generate_complete',
-        'linkedin_share_click'
+        'linkedin_share_click',
+        'facebook_share_click',
+        'instagram_share_click'
       ) NOT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       INDEX idx_event_type (event_type),
@@ -101,7 +103,9 @@ async function initDatabase() {
         'generate_click',
         'download_click',
         'generate_complete',
-        'linkedin_share_click'
+        'linkedin_share_click',
+        'facebook_share_click',
+        'instagram_share_click'
       ) NOT NULL
     `);
   } catch (e) {

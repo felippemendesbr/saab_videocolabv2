@@ -1090,7 +1090,16 @@ html:has(body.vc-login-page) {
 }
 
 .vc-dashboard-panel-wide {
-  grid-column: auto;
+  grid-column: 1 / -1;
+}
+
+.vc-dashboard-panel-subtitle {
+  margin: 0;
+  padding: 0 1rem 0.5rem;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: #6a6a6a;
+  border-bottom: 1px solid #e8e0cf;
 }
 
 .vc-dashboard-table-panel {

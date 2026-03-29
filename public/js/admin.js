@@ -51,12 +51,18 @@
   const kpiGenerateNoDownloadHint = document.getElementById('kpi-generate-no-download-hint');
   const kpiLinkedinShare = document.getElementById('kpi-linkedin-share');
   const kpiLinkedinShareHint = document.getElementById('kpi-linkedin-share-hint');
+  const kpiFacebookShare = document.getElementById('kpi-facebook-share');
+  const kpiFacebookShareHint = document.getElementById('kpi-facebook-share-hint');
+  const kpiInstagramShare = document.getElementById('kpi-instagram-share');
+  const kpiInstagramShareHint = document.getElementById('kpi-instagram-share-hint');
   const statusPieCanvas = document.getElementById('downloads-status-pie-chart');
   const statusPieCtx = statusPieCanvas?.getContext('2d');
   const dailyBarCanvas = document.getElementById('downloads-daily-bar-chart');
   const dailyBarCtx = dailyBarCanvas?.getContext('2d');
   const collaboratorsByCompanyCanvas = document.getElementById('collaborators-by-company-chart');
   const collaboratorsByCompanyCtx = collaboratorsByCompanyCanvas?.getContext('2d');
+  const socialShareBarCanvas = document.getElementById('social-share-bar-chart');
+  const socialShareBarCtx = socialShareBarCanvas?.getContext('2d');
   const recentDownloadsByCompanyList = document.getElementById('recent-downloads-by-company-list');
   const collabFormCancelBtn = document.getElementById('collaborators-cancel-new');
   const usersListControls = document.getElementById('users-list-controls');
@@ -195,6 +201,64 @@
       dailyBarCtx.fillStyle = '#666';
       dailyBarCtx.fillText(label, x, h - 18);
     }
+  }
+
+  function drawSocialShareBars(ctx, canvas, rows) {
+    if (!ctx || !canvas) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const data = rows && rows.length ? rows : [];
+    if (!data.length) {
+      ctx.fillStyle = '#373737';
+      ctx.font = '18px Arial';
+      ctx.fillText('Sem cliques em compartilhar ainda', 20, 140);
+      return;
+    }
+    const w = canvas.width;
+    const h = canvas.height;
+    const pad = { top: 32, right: 28, bottom: 78, left: 44 };
+    const chartW = w - pad.left - pad.right;
+    const chartH = h - pad.top - pad.bottom;
+    const max = Math.max(1, ...data.map((r) => Number(r.clicks || 0)));
+    const n = data.length;
+    const gap = 28;
+    const barW = n > 0 ? (chartW - gap * (n - 1)) / n : 0;
+
+    ctx.strokeStyle = '#d9d4c8';
+    ctx.beginPath();
+    ctx.moveTo(pad.left, pad.top);
+    ctx.lineTo(pad.left, pad.top + chartH);
+    ctx.lineTo(pad.left + chartW, pad.top + chartH);
+    ctx.stroke();
+
+    const ticks = [0, Math.floor(max / 2), max];
+    ctx.fillStyle = '#6a6a6a';
+    ctx.font = '11px Arial';
+    ticks.forEach((t) => {
+      const ty = pad.top + chartH - (t / max) * (chartH - 10);
+      ctx.fillText(String(t), 6, ty + 4);
+    });
+
+    data.forEach((row, idx) => {
+      const clicks = Number(row.clicks || 0);
+      const bh = (clicks / max) * (chartH - 10);
+      const x = pad.left + idx * (barW + gap);
+      const y = pad.top + chartH - bh;
+      ctx.fillStyle = row.color || '#262957';
+      ctx.fillRect(x, y, barW, Math.max(0, bh));
+      ctx.fillStyle = '#2d2d2d';
+      ctx.font = 'bold 15px Arial';
+      ctx.textAlign = 'center';
+      if (clicks > 0) {
+        ctx.fillText(String(clicks), x + barW / 2, Math.max(pad.top + 14, y - 6));
+      }
+      ctx.font = '13px Arial';
+      ctx.fillText(row.label || row.key, x + barW / 2, pad.top + chartH + 20);
+      ctx.fillStyle = '#6a6a6a';
+      ctx.font = '11px Arial';
+      const dist = Number(row.collaboratorsDistinct || 0);
+      ctx.fillText(`${dist} colab. distintos`, x + barW / 2, pad.top + chartH + 36);
+    });
+    ctx.textAlign = 'left';
   }
 
   function formatDateTime(value) {
@@ -490,6 +554,22 @@
         kpiLinkedinShareHint.textContent =
           distinct > 0 ? `${distinct} colaborador(es) distintos` : 'Ícone de compartilhar no LinkedIn';
       }
+      if (kpiFacebookShare) {
+        kpiFacebookShare.textContent = String(data.facebookShareClicksTotal || 0);
+      }
+      if (kpiFacebookShareHint) {
+        const distinct = Number(data.facebookShareCollaboratorsDistinct || 0);
+        kpiFacebookShareHint.textContent =
+          distinct > 0 ? `${distinct} colaborador(es) distintos` : 'Ícone de compartilhar no Facebook';
+      }
+      if (kpiInstagramShare) {
+        kpiInstagramShare.textContent = String(data.instagramShareClicksTotal || 0);
+      }
+      if (kpiInstagramShareHint) {
+        const distinct = Number(data.instagramShareCollaboratorsDistinct || 0);
+        kpiInstagramShareHint.textContent =
+          distinct > 0 ? `${distinct} colaborador(es) distintos` : 'Ícone de compartilhar no Instagram';
+      }
       drawPie(statusPieCtx, statusPieCanvas, data.byDownloadStatus || [], 'Sem dados de usuários');
       drawDailyBars(data.downloadsByDay || []);
       drawPie(
@@ -498,6 +578,7 @@
         data.collaboratorsByCompany || [],
         'Sem colaboradores cadastrados'
       );
+      drawSocialShareBars(socialShareBarCtx, socialShareBarCanvas, data.shareClicksByNetwork || []);
       renderRecentDownloadsByCompany(data.recentDownloadsByCompany || []);
       allUsers = data.users || [];
       allCollaborators = data.collaborators || [];

@@ -246,6 +246,34 @@ app.post('/api/metrics/linkedin-share-click', ensureAuthenticated, ensureCollabo
   }
 });
 
+app.post('/api/metrics/facebook-share-click', ensureAuthenticated, ensureCollaborator, async (req, res) => {
+  try {
+    try {
+      await insertMetricEvent(req, 'facebook_share_click');
+    } catch (metricErr) {
+      console.error('Aviso: falha ao registrar facebook_share_click:', metricErr);
+    }
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Erro ao registrar clique Facebook:', error);
+    res.status(500).json({ error: 'Falha ao registrar evento.' });
+  }
+});
+
+app.post('/api/metrics/instagram-share-click', ensureAuthenticated, ensureCollaborator, async (req, res) => {
+  try {
+    try {
+      await insertMetricEvent(req, 'instagram_share_click');
+    } catch (metricErr) {
+      console.error('Aviso: falha ao registrar instagram_share_click:', metricErr);
+    }
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Erro ao registrar clique Instagram:', error);
+    res.status(500).json({ error: 'Falha ao registrar evento.' });
+  }
+});
+
 /**
  * Regista intenção de download (sempre em metric_events).
  * Linha em `downloads`: só para WEBM (ficheiro servido só no cliente). Em MP4 o registo
@@ -330,6 +358,26 @@ app.get('/api/admin/metrics', ensureAuthenticated, ensureAdmin, async (req, res)
       `SELECT COUNT(DISTINCT email) AS total
        FROM metric_events
        WHERE event_type = 'linkedin_share_click'
+         AND email IS NOT NULL
+         AND email <> ''`
+    );
+    const [[facebookShareTotal]] = await pool.query(
+      `SELECT COUNT(*) AS total FROM metric_events WHERE event_type = 'facebook_share_click'`
+    );
+    const [[facebookShareDistinct]] = await pool.query(
+      `SELECT COUNT(DISTINCT email) AS total
+       FROM metric_events
+       WHERE event_type = 'facebook_share_click'
+         AND email IS NOT NULL
+         AND email <> ''`
+    );
+    const [[instagramShareTotal]] = await pool.query(
+      `SELECT COUNT(*) AS total FROM metric_events WHERE event_type = 'instagram_share_click'`
+    );
+    const [[instagramShareDistinct]] = await pool.query(
+      `SELECT COUNT(DISTINCT email) AS total
+       FROM metric_events
+       WHERE event_type = 'instagram_share_click'
          AND email IS NOT NULL
          AND email <> ''`
     );
@@ -425,6 +473,33 @@ app.get('/api/admin/metrics', ensureAuthenticated, ensureAdmin, async (req, res)
       videoReadyCollaboratorsCount,
       linkedinShareClicksTotal: Number(linkedinShareTotal.total || 0),
       linkedinShareCollaboratorsDistinct: Number(linkedinShareDistinct.total || 0),
+      facebookShareClicksTotal: Number(facebookShareTotal.total || 0),
+      facebookShareCollaboratorsDistinct: Number(facebookShareDistinct.total || 0),
+      instagramShareClicksTotal: Number(instagramShareTotal.total || 0),
+      instagramShareCollaboratorsDistinct: Number(instagramShareDistinct.total || 0),
+      shareClicksByNetwork: [
+        {
+          key: 'linkedin',
+          label: 'LinkedIn',
+          clicks: Number(linkedinShareTotal.total || 0),
+          collaboratorsDistinct: Number(linkedinShareDistinct.total || 0),
+          color: '#0a66c2'
+        },
+        {
+          key: 'facebook',
+          label: 'Facebook',
+          clicks: Number(facebookShareTotal.total || 0),
+          collaboratorsDistinct: Number(facebookShareDistinct.total || 0),
+          color: '#1877f2'
+        },
+        {
+          key: 'instagram',
+          label: 'Instagram',
+          clicks: Number(instagramShareTotal.total || 0),
+          collaboratorsDistinct: Number(instagramShareDistinct.total || 0),
+          color: '#bc1888'
+        }
+      ],
       users,
       collaborators
     });
