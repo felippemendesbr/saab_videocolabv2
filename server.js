@@ -2,8 +2,6 @@ require('dotenv').config();
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const { execFile } = require('child_process');
-const ffmpegStatic = require('ffmpeg-static');
 const express = require('express');
 const session = require('express-session');
 const bodyParser = require('body-parser');
@@ -12,17 +10,26 @@ const XLSX = require('xlsx');
 
 const authRoutes = require('./routes/authRoutes');
 const { pool, initDatabase } = require('./db');
+const { convertWebmToMp4Buffer } = require('./lib/convertio');
 
 const app = express();
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3001;
-const FFMPEG_BIN = process.env.FFMPEG_PATH || ffmpegStatic || 'ffmpeg';
-const FFMPEG_TIMEOUT_MS = Number(process.env.FFMPEG_TIMEOUT_MS || 120000);
+
+const DOMAINS_ADMIN_EMAIL = (
+  process.env.DOMAINS_ADMIN_EMAIL || 'comunicacao.saab@owly.com.br'
+)
+  .trim()
+  .toLowerCase();
 
 const uploadsDir = path.join(os.tmpdir(), 'saab-videocolab-uploads');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
-const upload = multer({ dest: uploadsDir });
+const upload = multer({
+  dest: uploadsDir,
+  limits: { fileSize: 120 * 1024 * 1024 }
+});
 
 const sessionSecret =
   process.env.SESSION_SECRET || 'dev-only-session-secret-altere-em-producao';
@@ -71,6 +78,24 @@ function ensureCollaborator(req, res, next) {
   return res.redirect('/admin');
 }
 
+function ensureDomainsAdmin(req, res, next) {
+  const em = String(req.session.userEmail || '')
+    .trim()
+    .toLowerCase();
+  if (em === DOMAINS_ADMIN_EMAIL) {
+    return next();
+  }
+  return res.status(403).json({ error: 'Acesso restrito a esta área.' });
+}
+
+function normalizeDomainValue(raw) {
+  let s = String(raw || '').trim().toLowerCase();
+  if (s.startsWith('@')) {
+    s = s.slice(1);
+  }
+  return s;
+}
+
 async function emailTakenByUser(email, excludeUserId) {
   const params = excludeUserId != null ? [email, excludeUserId] : [email];
   const sql =
@@ -103,63 +128,36 @@ app.get('/admin', ensureAuthenticated, ensureAdmin, (req, res) => {
 
 // Endpoint para obter dados do usuário logado (usado pelo frontend)
 app.get('/api/me', ensureAuthenticated, (req, res) => {
+  const email = String(req.session.userEmail || '')
+    .trim()
+    .toLowerCase();
   res.json({
     id: req.session.userId || null,
     email: req.session.userEmail || null,
     company: req.session.userCompany || null,
     role: req.session.userRole || 'user',
-    accountType: req.session.accountType || 'collaborator'
+    accountType: req.session.accountType || 'collaborator',
+    canManageDomains: email === DOMAINS_ADMIN_EMAIL
   });
 });
 
-// Conversão de WebM para MP4 usando FFmpeg
+// Conversão WebM → MP4 via Convert.io
 app.post(
   '/api/convert-to-mp4',
   ensureAuthenticated,
   ensureCollaborator,
   upload.single('video'),
-  (req, res) => {
+  async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ error: 'Arquivo de vídeo não enviado.' });
     }
-
     const inputPath = req.file.path;
-    const outputPath = `${inputPath}.mp4`;
+    try {
+      const webmBuffer = await fs.promises.readFile(inputPath);
+      await fs.promises.unlink(inputPath).catch(() => {});
 
-    const ffmpegArgs = [
-      '-y',
-      '-i',
-      inputPath,
-      '-c:v',
-      'libx264',
-      '-preset',
-      'veryfast',
-      '-crf',
-      '23',
-      '-c:a',
-      'aac',
-      '-b:a',
-      '128k',
-      outputPath
-    ];
-
-    const ffmpegProcess = execFile(FFMPEG_BIN, ffmpegArgs, (error, stdout, stderr) => {
-      clearTimeout(timeoutId);
-      fs.unlink(inputPath, () => {});
-
-      if (error) {
-        const isKilled = error.killed || /SIGKILL|signal/i.test(String(error.signal || ''));
-        console.error('Erro ao executar FFmpeg:', error);
-        console.error('Binário FFmpeg utilizado:', FFMPEG_BIN);
-        console.error(stderr);
-        fs.unlink(outputPath, () => {});
-
-        const message = isKilled
-          ? 'A conversão para MP4 demorou mais do que o permitido no servidor.'
-          : 'Erro ao converter vídeo para MP4 no servidor.';
-
-        return res.status(500).json({ error: message });
-      }
+      const apiKey = process.env.CONVERTIO_API_KEY || '';
+      const mp4Buffer = await convertWebmToMp4Buffer(webmBuffer, apiKey);
 
       res.setHeader('Content-Type', 'video/mp4');
       res.setHeader(
@@ -167,10 +165,6 @@ app.post(
         'attachment; filename="video-colaborador.mp4"'
       );
 
-      const readStream = fs.createReadStream(outputPath);
-      readStream.on('close', () => {
-        fs.unlink(outputPath, () => {});
-      });
       pool
         .query('INSERT INTO downloads (user_id, company, email) VALUES (?, ?, ?)', [
           req.session.userId,
@@ -180,15 +174,105 @@ app.post(
         .catch((dbErr) => {
           console.error('Erro ao registrar download:', dbErr);
         });
-      readStream.pipe(res);
-    });
 
-    const timeoutId = setTimeout(() => {
-      if (ffmpegProcess && ffmpegProcess.kill) {
-        console.warn('FFmpeg excedeu tempo limite, encerrando processo.');
-        ffmpegProcess.kill('SIGKILL');
+      res.send(mp4Buffer);
+    } catch (error) {
+      await fs.promises.unlink(inputPath).catch(() => {});
+      console.error('Erro na conversão Convert.io:', error);
+      const msg =
+        error && error.message
+          ? error.message
+          : 'Erro ao converter vídeo para MP4.';
+      res.status(500).json({ error: msg });
+    }
+  }
+);
+
+app.get(
+  '/api/admin/domains',
+  ensureAuthenticated,
+  ensureAdmin,
+  ensureDomainsAdmin,
+  async (req, res) => {
+    try {
+      const [rows] = await pool.query(
+        'SELECT id, domain, created_at FROM allowed_email_domains ORDER BY domain ASC'
+      );
+      res.json({ domains: rows });
+    } catch (error) {
+      console.error('Erro ao listar domínios:', error);
+      res.status(500).json({ error: 'Falha ao listar domínios.' });
+    }
+  }
+);
+
+app.post(
+  '/api/admin/domains',
+  ensureAuthenticated,
+  ensureAdmin,
+  ensureDomainsAdmin,
+  async (req, res) => {
+    const domain = normalizeDomainValue(req.body && req.body.domain);
+    if (!domain || domain.length < 3 || !domain.includes('.')) {
+      return res.status(400).json({ error: 'Domínio inválido (ex.: empresa.com.br).' });
+    }
+    try {
+      await pool.query('INSERT INTO allowed_email_domains (domain) VALUES (?)', [domain]);
+      res.json({ ok: true });
+    } catch (error) {
+      if (error && error.code === 'ER_DUP_ENTRY') {
+        return res.status(409).json({ error: 'Este domínio já está cadastrado.' });
       }
-    }, FFMPEG_TIMEOUT_MS);
+      console.error('Erro ao criar domínio:', error);
+      res.status(500).json({ error: 'Falha ao salvar domínio.' });
+    }
+  }
+);
+
+app.put(
+  '/api/admin/domains/:id',
+  ensureAuthenticated,
+  ensureAdmin,
+  ensureDomainsAdmin,
+  async (req, res) => {
+    const id = Number(req.params.id);
+    const domain = normalizeDomainValue(req.body && req.body.domain);
+    if (!id || !domain || domain.length < 3 || !domain.includes('.')) {
+      return res.status(400).json({ error: 'Dados inválidos.' });
+    }
+    try {
+      await pool.query('UPDATE allowed_email_domains SET domain = ? WHERE id = ?', [
+        domain,
+        id
+      ]);
+      res.json({ ok: true });
+    } catch (error) {
+      if (error && error.code === 'ER_DUP_ENTRY') {
+        return res.status(409).json({ error: 'Este domínio já está cadastrado.' });
+      }
+      console.error('Erro ao atualizar domínio:', error);
+      res.status(500).json({ error: 'Falha ao atualizar domínio.' });
+    }
+  }
+);
+
+app.delete(
+  '/api/admin/domains/:id',
+  ensureAuthenticated,
+  ensureAdmin,
+  ensureDomainsAdmin,
+  async (req, res) => {
+    const id = Number(req.params.id);
+    if (!id) {
+      return res.status(400).json({ error: 'ID inválido.' });
+    }
+    try {
+      await pool.query('DELETE FROM allowed_email_domains WHERE id = ?', [id]);
+      res.json({ ok: true });
+    } catch (error) {
+      console.error('Erro ao remover domínio:', error);
+      res.status(500).json({ error: 'Falha ao remover domínio.' });
+    }
   }
 );
 

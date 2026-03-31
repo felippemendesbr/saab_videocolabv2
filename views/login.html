@@ -15,11 +15,11 @@
         <h2 class="vc-login-title">Video Collab SAAB</h2>
         <p class="vc-login-subtitle">
           Personalize o vídeo em homenagem às pessoas que fazem parte do Gripen produzido no Brasil<br /><br />
-          Insira seu e-mail profissional para acessar.
+          Informe seu e-mail corporativo. Enviaremos um link de acesso válido por poucos minutos.
         </p>
 
         <form class="vc-form" method="POST" action="/login">
-          <label for="email" class="vc-label">Email</label>
+          <label for="email" class="vc-label">E-mail corporativo</label>
           <input
             type="email"
             id="email"
@@ -27,13 +27,15 @@
             class="vc-input vc-login-input"
             placeholder="seu.nome@empresa.com.br"
             required
+            autocomplete="email"
           />
-          <p id="login-error" class="vc-error-message" hidden>
-            E-mail não autorizado.
+          <p id="login-sent" class="vc-login-success" hidden>
+            Enviamos um link para o seu e-mail. Abra a caixa de entrada e clique no link para entrar.
           </p>
+          <p id="login-error" class="vc-error-message" hidden></p>
 
           <button type="submit" class="vc-button vc-login-button">
-            Entrar
+            Enviar link de acesso
           </button>
         </form>
       </section>
@@ -42,9 +44,24 @@
     <script>
       (function () {
         const params = new URLSearchParams(window.location.search);
-        const hasError = params.get('error') === '1' || params.get('error') === '2';
         const errorEl = document.getElementById('login-error');
-        if (hasError && errorEl) {
+        const sentEl = document.getElementById('login-sent');
+        const err = params.get('error');
+        const sent = params.get('sent');
+
+        const messages = {
+          '1': 'Não foi possível concluir o acesso. Solicite um novo link ou contacte o suporte.',
+          '2': 'Este e-mail está reservado. Utilize o cadastro de usuários no painel administrativo.',
+          '3': 'Use apenas e-mails corporativos autorizados (domínio não permitido).',
+          '4': 'Não foi possível enviar o e-mail. Tente mais tarde ou contacte o suporte.',
+          '6': 'Este link de acesso expirou ou já foi utilizado. Solicite um novo link.'
+        };
+
+        if (sent === '1' && sentEl) {
+          sentEl.hidden = false;
+        }
+        if (err && errorEl && messages[err]) {
+          errorEl.textContent = messages[err];
           errorEl.hidden = false;
         }
       })();

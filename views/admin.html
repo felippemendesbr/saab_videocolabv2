@@ -35,11 +35,17 @@
           </svg>
           <span>Usuários</span>
         </button>
-        <button class="vc-sidebar-item" data-tab="collaborators">
+        <button type="button" class="vc-sidebar-item vc-hidden" data-tab="collaborators" aria-hidden="true">
           <svg class="vc-menu-icon" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M17 21v-2a5 5 0 00-10 0v2M12 11a4 4 0 100-8 4 4 0 000 8M22 21v-2a5 5 0 00-3-4.58M2 21v-2a5 5 0 013-4.58" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
           <span>Colaboradores</span>
+        </button>
+        <button type="button" class="vc-sidebar-item vc-hidden" id="sidebar-domains" data-tab="domains">
+          <svg class="vc-menu-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 6h16M4 12h16M4 18h10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+          <span>Domínios</span>
         </button>
       </aside>
 
@@ -247,7 +253,6 @@
             </div>
             <div class="vc-crud-toolbar-actions">
               <button id="collaborators-new-button" class="vc-button vc-crud-primary-action">+ Novo Colaborador</button>
-              <button id="go-import-screen" class="vc-button vc-crud-primary-action">Importar planilha</button>
             </div>
           </div>
 
@@ -317,7 +322,44 @@
           </div>
         </section>
 
-        <section class="vc-card vc-tab-panel vc-hidden" data-panel="collaborators-import">
+        <section class="vc-card vc-tab-panel vc-hidden" data-panel="domains">
+          <div class="vc-crud-header">
+            <div>
+              <h2 class="vc-card-title">Domínios de e-mail permitidos</h2>
+              <p class="vc-card-subtitle">
+                Apenas endereços cujo domínio está na lista podem pedir link de acesso ao gerador de vídeo.
+              </p>
+            </div>
+          </div>
+
+          <form id="domains-form" class="vc-form vc-crud-form">
+            <input
+              type="text"
+              id="domain-input"
+              class="vc-input"
+              placeholder="ex.: empresa.com.br"
+              autocomplete="off"
+              required
+            />
+            <button type="submit" class="vc-button vc-button-secondary">Adicionar domínio</button>
+          </form>
+          <p id="domains-feedback" class="vc-helper-text"></p>
+
+          <div class="vc-table-wrapper">
+            <table class="vc-crud-table">
+              <thead>
+                <tr>
+                  <th>Domínio</th>
+                  <th>Cadastrado em</th>
+                  <th>Ações</th>
+                </tr>
+              </thead>
+              <tbody id="domains-list"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="vc-card vc-tab-panel vc-hidden" data-panel="collaborators-import" hidden aria-hidden="true">
           <div class="vc-crud-header">
             <div>
               <h2 class="vc-card-title">Importação de Colaboradores</h2>

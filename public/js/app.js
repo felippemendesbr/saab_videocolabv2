@@ -26,8 +26,7 @@
 
   const MAX_FILE_SIZE_MB = 5;
   const CANVAS_BG_COLOR = '#373737';
-  // Troque para 'webm' quando quiser voltar ao fluxo antigo.
-  const DOWNLOAD_OUTPUT_FORMAT = 'webm'
+  const DOWNLOAD_OUTPUT_FORMAT = 'mp4';
 
   let currentImage = null;
   let collaboratorEmail = null;
@@ -152,18 +151,17 @@
 
     trackMetric('download-click', { format: DOWNLOAD_OUTPUT_FORMAT }).finally(async () => {
       try {
-        if (DOWNLOAD_OUTPUT_FORMAT === 'mp4') {
-          downloadButton.textContent = 'Convertendo para MP4...';
-          const convertedBlob = await convertWebmToMp4(lastRecordedBlob);
-          triggerBlobDownload(convertedBlob, 'video-colaborador.mp4');
-          return;
-        }
+        downloadButton.textContent = 'Convertendo para MP4...';
+        const convertedBlob = await convertWebmToMp4(lastRecordedBlob);
+        triggerBlobDownload(convertedBlob, 'video-colaborador.mp4');
       } catch (error) {
-        console.error('Falha na conversão para MP4. Mantendo download em WEBM:', error);
-        alert('Não foi possível converter para MP4 agora. O download será feito em WEBM.');
-        await trackMetric('download-click', { deliveryOnly: true });
+        console.error('Falha na conversão para MP4:', error);
+        alert(
+          error && error.message
+            ? error.message
+            : 'Não foi possível converter o vídeo para MP4. Tente novamente.'
+        );
       }
-      triggerBlobDownload(lastRecordedBlob, 'video-colaborador.webm');
     }).finally(() => {
       downloadButton.disabled = false;
       downloadButton.textContent = originalLabel;
@@ -185,7 +183,7 @@
     const formData = new FormData();
     formData.append('video', blob, 'video-colaborador.webm');
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 85000);
+    const timeoutId = setTimeout(() => controller.abort(), 300000);
     let response;
     try {
       response = await fetch('/api/convert-to-mp4', {
@@ -195,7 +193,7 @@
       });
     } catch (err) {
       if (err && err.name === 'AbortError') {
-        throw new Error('A conversão para MP4 demorou mais do que o tempo máximo permitido.');
+        throw new Error('A conversão para MP4 demorou mais do que cinco minutos.');
       }
       throw err;
     } finally {

@@ -42,6 +42,12 @@
   const importButton = document.getElementById('admin-import-button');
   const importFeedback = document.getElementById('admin-import-feedback');
 
+  const sidebarDomainsBtn = document.getElementById('sidebar-domains');
+  const domainsForm = document.getElementById('domains-form');
+  const domainInput = document.getElementById('domain-input');
+  const domainsList = document.getElementById('domains-list');
+  const domainsFeedback = document.getElementById('domains-feedback');
+
   const usersListEl = document.getElementById('admin-users-list');
   const collaboratorsListEl = document.getElementById('admin-collaborators-list');
   const kpiUsers = document.getElementById('kpi-users');
@@ -501,6 +507,60 @@
     if (tab === 'collaborators') {
       setCollaboratorsView('list');
     }
+    if (tab === 'domains') {
+      loadDomains();
+    }
+  }
+
+  async function initDomainsAccess() {
+    try {
+      const res = await fetch('/api/me');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.canManageDomains && sidebarDomainsBtn) {
+        sidebarDomainsBtn.classList.remove('vc-hidden');
+      }
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  async function loadDomains() {
+    if (!domainsList) return;
+    try {
+      const res = await fetch('/api/admin/domains');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Falha ao carregar domínios');
+      const rows = data.domains || [];
+      if (!rows.length) {
+        domainsList.innerHTML =
+          '<tr><td colspan="3">Nenhum domínio cadastrado. Adicione pelo menos um para permitir logins.</td></tr>';
+        return;
+      }
+      domainsList.innerHTML = rows
+        .map(
+          (r) => `
+        <tr>
+          <td>${escapeHtml(r.domain)}</td>
+          <td>${formatDateTime(r.created_at)}</td>
+          <td>
+            <button type="button" class="vc-button vc-crud-ghost" data-edit-domain="${r.id}" data-domain="${encodeURIComponent(r.domain)}">Editar</button>
+            <button type="button" class="vc-button vc-crud-ghost" data-delete-domain="${r.id}">Excluir</button>
+          </td>
+        </tr>`
+        )
+        .join('');
+    } catch (error) {
+      if (domainsFeedback) showText(domainsFeedback, error.message, true);
+    }
+  }
+
+  function escapeHtml(s) {
+    const t = String(s);
+    return t
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/"/g, '&quot;');
   }
 
   function setUsersView(mode) {
@@ -674,30 +734,32 @@
     }
   });
 
-  importButton.addEventListener('click', async () => {
-    const file = importFileInput.files && importFileInput.files[0];
-    if (!file) {
-      showText(importFeedback, 'Selecione um arquivo primeiro.', true);
-      return;
-    }
+  if (importButton) {
+    importButton.addEventListener('click', async () => {
+      const file = importFileInput.files && importFileInput.files[0];
+      if (!file) {
+        showText(importFeedback, 'Selecione um arquivo primeiro.', true);
+        return;
+      }
 
-    const formData = new FormData();
-    formData.append('file', file);
-    showText(importFeedback, 'Importando...', false);
+      const formData = new FormData();
+      formData.append('file', file);
+      showText(importFeedback, 'Importando...', false);
 
-    try {
-      const res = await fetch('/api/admin/collaborators/import', {
-        method: 'POST',
-        body: formData
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Falha na importação');
-      showText(importFeedback, `Importação concluída. Inseridos: ${data.inserted}, ignorados: ${data.skipped}.`, false);
-      loadMetrics();
-    } catch (error) {
-      showText(importFeedback, error.message, true);
-    }
-  });
+      try {
+        const res = await fetch('/api/admin/collaborators/import', {
+          method: 'POST',
+          body: formData
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Falha na importação');
+        showText(importFeedback, `Importação concluída. Inseridos: ${data.inserted}, ignorados: ${data.skipped}.`, false);
+        loadMetrics();
+      } catch (error) {
+        showText(importFeedback, error.message, true);
+      }
+    });
+  }
 
   if (previewImportButton) {
     previewImportButton.addEventListener('click', async () => {
@@ -915,10 +977,76 @@
     });
   });
 
+  if (domainsForm && domainInput) {
+    domainsForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const raw = domainInput.value.trim();
+      if (!raw) return;
+      showText(domainsFeedback, 'Salvando...', false);
+      try {
+        const res = await fetch('/api/admin/domains', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ domain: raw })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Falha ao salvar');
+        domainInput.value = '';
+        showText(domainsFeedback, 'Domínio adicionado.', false);
+        await loadDomains();
+      } catch (err) {
+        showText(domainsFeedback, err.message, true);
+      }
+    });
+  }
+
+  if (domainsList) {
+    domainsList.addEventListener('click', async (ev) => {
+      const delBtn = ev.target.closest('[data-delete-domain]');
+      const editBtn = ev.target.closest('[data-edit-domain]');
+      if (delBtn) {
+        const id = delBtn.getAttribute('data-delete-domain');
+        if (!id || !window.confirm('Excluir este domínio?')) return;
+        try {
+          const res = await fetch(`/api/admin/domains/${id}`, { method: 'DELETE' });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Falha ao excluir');
+          showText(domainsFeedback, 'Domínio removido.', false);
+          await loadDomains();
+        } catch (err) {
+          showText(domainsFeedback, err.message, true);
+        }
+        return;
+      }
+      if (editBtn) {
+        const id = editBtn.getAttribute('data-edit-domain');
+        const prev = decodeURIComponent(editBtn.getAttribute('data-domain') || '');
+        const next = window.prompt('Novo domínio:', prev);
+        if (next === null) return;
+        const trimmed = next.trim();
+        if (!trimmed || trimmed === prev) return;
+        try {
+          const res = await fetch(`/api/admin/domains/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ domain: trimmed })
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Falha ao atualizar');
+          showText(domainsFeedback, 'Domínio atualizado.', false);
+          await loadDomains();
+        } catch (err) {
+          showText(domainsFeedback, err.message, true);
+        }
+      }
+    });
+  }
+
   setupTabs();
   switchToTab('dashboard');
   setUsersView('list');
   setCollaboratorsView('list');
+  initDomainsAccess();
   loadMetrics();
 })();
 

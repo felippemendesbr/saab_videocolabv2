@@ -112,6 +112,39 @@ async function initDatabase() {
     console.warn('metric_events ENUM (pode ser ignorado se já atualizado):', e.message);
   }
 
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS allowed_email_domains (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      domain VARCHAR(255) NOT NULL UNIQUE,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS magic_login_tokens (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      token_hash CHAR(64) NOT NULL,
+      email VARCHAR(255) NOT NULL,
+      account_type ENUM('user','collaborator') NOT NULL,
+      expires_at DATETIME NOT NULL,
+      used_at DATETIME NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_magic_hash (token_hash),
+      INDEX idx_magic_expires (expires_at)
+    )
+  `);
+
+  const [[domainCount]] = await pool.query(
+    'SELECT COUNT(*) AS c FROM allowed_email_domains'
+  );
+  if (Number(domainCount.c) === 0) {
+    await pool.query(
+      'INSERT INTO allowed_email_domains (domain) VALUES (?)',
+      ['owly.com.br']
+    );
+    console.log('Domínio inicial owly.com.br adicionado (lista de domínios permitidos).');
+  }
+
   if (ADMIN_EMAIL) {
     const [existingAdmin] = await pool.query(
       'SELECT id FROM users WHERE email = ? LIMIT 1',

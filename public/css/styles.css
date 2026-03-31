@@ -145,6 +145,13 @@ html:has(body.vc-login-page) {
   color: #ffc2cc;
 }
 
+.vc-login-card .vc-login-success {
+  color: #c8e6c9;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  margin: 0.35rem 0 0.5rem;
+}
+
 /* Paleta
  * Principal: #373737
  * Secundária: #d9d9d6
