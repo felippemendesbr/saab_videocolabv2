@@ -65,7 +65,7 @@ async function initDatabase() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS downloads (
       id INT AUTO_INCREMENT PRIMARY KEY,
-      user_id INT NOT NULL,
+      user_id INT NULL,
       company VARCHAR(255) NOT NULL,
       email VARCHAR(255) NULL,
       downloaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -75,6 +75,11 @@ async function initDatabase() {
   `);
 
   await pool.query('ALTER TABLE downloads ADD COLUMN IF NOT EXISTS email VARCHAR(255) NULL');
+  try {
+    await pool.query('ALTER TABLE downloads MODIFY COLUMN user_id INT NULL');
+  } catch (e) {
+    console.warn('downloads.user_id nullable (pode ser ignorado se já atualizado):', e.message);
+  }
   await pool.query(`
     CREATE TABLE IF NOT EXISTS metric_events (
       id INT AUTO_INCREMENT PRIMARY KEY,

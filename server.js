@@ -125,6 +125,13 @@ function normalizeDomainValue(raw) {
   return s;
 }
 
+function getDownloadOwnerUserId(req) {
+  if (req.session && req.session.accountType === 'user') {
+    return req.session.userId || null;
+  }
+  return null;
+}
+
 async function emailTakenByUser(email, excludeUserId) {
   const params = excludeUserId != null ? [email, excludeUserId] : [email];
   const sql =
@@ -196,7 +203,7 @@ app.post(
 
       pool
         .query('INSERT INTO downloads (user_id, company, email) VALUES (?, ?, ?)', [
-          req.session.userId,
+          getDownloadOwnerUserId(req),
           req.session.userCompany || 'Sem Empresa',
           req.session.userEmail || null
         ])
@@ -396,11 +403,12 @@ app.post('/api/metrics/instagram-share-click', ensureAuthenticated, ensureCollab
 app.post('/api/metrics/download-click', ensureAuthenticated, ensureCollaborator, async (req, res) => {
   try {
     const userId = req.session.userId || null;
+    const downloadOwnerUserId = getDownloadOwnerUserId(req);
     const email = req.session.userEmail || null;
     const company = req.session.userCompany || 'Sem Empresa';
     if (req.body && req.body.deliveryOnly === true) {
       await pool.query('INSERT INTO downloads (user_id, company, email) VALUES (?, ?, ?)', [
-        userId,
+        downloadOwnerUserId,
         company,
         email
       ]);
@@ -417,7 +425,7 @@ app.post('/api/metrics/download-click', ensureAuthenticated, ensureCollaborator,
     }
     if (format !== 'mp4') {
       await pool.query('INSERT INTO downloads (user_id, company, email) VALUES (?, ?, ?)', [
-        userId,
+        downloadOwnerUserId,
         company,
         email
       ]);
