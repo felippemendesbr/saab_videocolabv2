@@ -373,6 +373,19 @@ html:has(body.vc-login-page) {
   margin-top: 1rem;
 }
 
+.vc-media-ready-status {
+  margin: 0 0 0.65rem;
+  color: #d7dcff;
+}
+
+.vc-media-ready-status.is-ready {
+  color: #bfe8c4;
+}
+
+.vc-media-ready-status.is-error {
+  color: #ffc2cc;
+}
+
 .vc-photo-preview {
   border-radius: 12px;
   border: 1px dashed rgba(255, 255, 255, 0.45);
