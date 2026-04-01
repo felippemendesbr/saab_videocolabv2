@@ -3,7 +3,6 @@
   const photoPreview = document.getElementById('photo-preview');
   const generateButton = document.getElementById('generate-button');
   const downloadButton = document.getElementById('download-button');
-  const newVideoButton = document.getElementById('new-video-button');
   const linkedinShare = document.getElementById('linkedin-share');
   const linkedinShareLink = document.getElementById('linkedin-share-link');
   const facebookShareLink = document.getElementById('facebook-share-link');
@@ -198,9 +197,6 @@
     if (downloadButton) {
       downloadButton.hidden = true;
       downloadButton.disabled = true;
-    }
-    if (newVideoButton) {
-      newVideoButton.hidden = true;
     }
     if (linkedinShare) {
       linkedinShare.hidden = true;
@@ -487,9 +483,6 @@
               downloadButton.hidden = false;
               downloadButton.disabled = false;
             }
-            if (newVideoButton) {
-              newVideoButton.hidden = false;
-            }
             if (linkedinShare) {
               linkedinShare.hidden = false;
             }
@@ -525,14 +518,6 @@
         handleDownloadClick();
       });
     }
-    if (newVideoButton) {
-      newVideoButton.addEventListener('click', (event) => {
-        event.preventDefault();
-        clearPreviousResult();
-        showProgress(false);
-      });
-    }
-
     if (linkedinShareLink) {
       linkedinShareLink.addEventListener('click', () => {
         handleSocialShareClick('LinkedIn');
