@@ -113,6 +113,11 @@ html:has(body.vc-login-page) {
   text-align: center;
   color: #d8d9ea;
   font-size: 0.92rem;
+  margin-bottom: 0.55rem;
+}
+
+.vc-login-subtitle-en {
+  color: #c7cae6;
   margin-bottom: 1.2rem;
 }
 

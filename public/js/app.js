@@ -41,7 +41,7 @@
     `#EuSouParteDoGripen\n` +
     `#Gripen\n` +
     `#SaabBrasil\n` +
-    `@SaabBrasil`;
+    `@SaabdoBrasil`;
 
   function trackMetric(eventType, body) {
     if (!eventType) return Promise.resolve();
@@ -151,9 +151,9 @@
 
     trackMetric('download-click', { format: DOWNLOAD_OUTPUT_FORMAT }).finally(async () => {
       try {
-        downloadButton.textContent = 'Convertendo para MP4...';
+        downloadButton.textContent = 'Seu vídeo está sendo baixado';
         const convertedBlob = await convertWebmToMp4(lastRecordedBlob);
-        triggerBlobDownload(convertedBlob, 'video-colaborador.mp4');
+        triggerBlobDownload(convertedBlob, 'video-somospartedogripen.mp4');
       } catch (error) {
         console.error('Falha na conversão para MP4:', error);
         alert(
