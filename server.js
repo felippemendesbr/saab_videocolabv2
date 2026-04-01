@@ -50,6 +50,35 @@ app.use(
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 
+let dbInitPromise = null;
+function initDatabaseOnce() {
+  if (!dbInitPromise) {
+    dbInitPromise = initDatabase().catch((error) => {
+      dbInitPromise = null;
+      throw error;
+    });
+  }
+  return dbInitPromise;
+}
+
+// Em serverless, inicializamos o DB de forma lazy por requisição.
+app.use(async (req, res, next) => {
+  const needsDb =
+    req.path.startsWith('/api') ||
+    req.path === '/login' ||
+    req.path.startsWith('/auth/');
+  if (!needsDb) {
+    return next();
+  }
+  try {
+    await initDatabaseOnce();
+    return next();
+  } catch (error) {
+    console.error('Falha ao inicializar banco (request):', error);
+    return res.status(500).json({ error: 'Falha ao inicializar banco.' });
+  }
+});
+
 // Static
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -873,16 +902,19 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'login.html'));
 });
 
-// Start
-(async () => {
-  try {
-    await initDatabase();
-    app.listen(PORT, () => {
-      console.log(`SAAB VideoColab rodando em http://localhost:${PORT}`);
-    });
-  } catch (error) {
-    console.error('Falha ao inicializar banco:', error);
-    process.exit(1);
-  }
-})();
+if (!process.env.VERCEL) {
+  (async () => {
+    try {
+      await initDatabaseOnce();
+      app.listen(PORT, () => {
+        console.log(`SAAB VideoColab rodando em http://localhost:${PORT}`);
+      });
+    } catch (error) {
+      console.error('Falha ao inicializar banco:', error);
+      process.exit(1);
+    }
+  })();
+}
+
+module.exports = app;
 
