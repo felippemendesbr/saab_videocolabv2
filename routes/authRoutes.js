@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 const express = require('express');
 const { pool } = require('../db');
-const { sendMagicLinkEmail, smtpConfigured } = require('../lib/mailer');
+const { sendAccessCodeEmail, smtpConfigured } = require('../lib/mailer');
 
 const router = express.Router();
 
@@ -9,8 +9,8 @@ function hashToken(raw) {
   return crypto.createHash('sha256').update(raw, 'utf8').digest('hex');
 }
 
-function randomToken() {
-  return crypto.randomBytes(32).toString('hex');
+function randomCode() {
+  return String(crypto.randomInt(0, 1000000)).padStart(6, '0');
 }
 
 function emailDomain(email) {
@@ -29,17 +29,63 @@ function displayNameFromEmail(email) {
     .join(' ');
 }
 
-function publicBaseUrl(req) {
-  const env = process.env.PUBLIC_BASE_URL;
-  if (env && String(env).trim()) {
-    return String(env).trim().replace(/\/$/, '');
+async function establishSessionByEmail(req, normalizedEmail) {
+  const [users] = await pool.query(
+    'SELECT id, email, company, role, is_active FROM users WHERE email = ? LIMIT 1',
+    [normalizedEmail]
+  );
+  if (users.length) {
+    const u = users[0];
+    if (!Number(u.is_active)) {
+      return { ok: false };
+    }
+    req.session.userId = u.id;
+    req.session.userEmail = u.email;
+    req.session.userCompany = u.company || 'SAAB';
+    req.session.userRole = u.role || 'admin';
+    req.session.accountType = 'user';
+    return { ok: true, redirectTo: '/admin' };
   }
-  const host = req.get('host') || 'localhost:3001';
-  const proto = req.protocol === 'https' ? 'https' : 'http';
-  return `${proto}://${host}`;
+
+  let [collabs] = await pool.query(
+    'SELECT id, email, company, is_active FROM collaborators WHERE email = ? LIMIT 1',
+    [normalizedEmail]
+  );
+
+  if (!collabs.length) {
+    const dom = emailDomain(normalizedEmail);
+    const name = displayNameFromEmail(normalizedEmail);
+    const company = dom || 'Corporativo';
+    try {
+      await pool.query(
+        'INSERT INTO collaborators (name, email, company, is_active) VALUES (?, ?, ?, 1)',
+        [name, normalizedEmail, company]
+      );
+    } catch (insErr) {
+      if (!(insErr && insErr.code === 'ER_DUP_ENTRY')) {
+        throw insErr;
+      }
+    }
+    [collabs] = await pool.query(
+      'SELECT id, email, company, is_active FROM collaborators WHERE email = ? LIMIT 1',
+      [normalizedEmail]
+    );
+  }
+
+  if (!collabs.length || !Number(collabs[0].is_active)) {
+    return { ok: false };
+  }
+
+  const c = collabs[0];
+  req.session.userId = c.id;
+  req.session.userEmail = c.email;
+  req.session.userCompany = c.company || 'Sem Empresa';
+  req.session.userRole = 'collaborator';
+  req.session.accountType = 'collaborator';
+  return { ok: true, redirectTo: '/dashboard' };
 }
 
-// POST /login — domínio permitido → envia link mágico (não exige cadastro prévio)
+// POST /login — domínio permitido → envia código de acesso
 router.post('/login', async (req, res) => {
   const { email } = req.body;
   if (!email) {
@@ -60,133 +106,80 @@ router.post('/login', async (req, res) => {
       return res.redirect('/?error=3');
     }
 
-    let accountType = 'collaborator';
-    const [adminUsers] = await pool.query(
-      'SELECT id, is_active FROM users WHERE email = ? LIMIT 1',
-      [normalizedEmail]
-    );
-    if (adminUsers.length && Number(adminUsers[0].is_active)) {
-      accountType = 'user';
-    }
-
     if (!smtpConfigured()) {
       console.error('login: SMTP não configurado (SMTP_HOST / SMTP_USER / SMTP_PASSWORD).');
       return res.redirect('/?error=4');
     }
 
-    const rawToken = randomToken();
-    const tokenHash = hashToken(rawToken);
+    const rawCode = randomCode();
+    const tokenHash = hashToken(rawCode);
     const expires = new Date(Date.now() + 15 * 60 * 1000);
 
     await pool.query(
-      'INSERT INTO magic_login_tokens (token_hash, email, account_type, expires_at) VALUES (?, ?, ?, ?)',
-      [tokenHash, normalizedEmail, accountType, expires]
+      'UPDATE magic_login_tokens SET used_at = NOW() WHERE email = ? AND used_at IS NULL',
+      [normalizedEmail]
     );
 
-    const base = publicBaseUrl(req);
-    const magicLinkUrl = `${base}/auth/magic?token=${encodeURIComponent(rawToken)}`;
+    await pool.query(
+      'INSERT INTO magic_login_tokens (token_hash, email, account_type, expires_at) VALUES (?, ?, ?, ?)',
+      [tokenHash, normalizedEmail, 'collaborator', expires]
+    );
 
     try {
-      await sendMagicLinkEmail({ to: normalizedEmail, magicLinkUrl });
+      await sendAccessCodeEmail({ to: normalizedEmail, accessCode: rawCode });
     } catch (mailErr) {
       console.error('Erro ao enviar e-mail de login:', mailErr);
       return res.redirect('/?error=4');
     }
 
-    return res.redirect('/?sent=1');
+    return res.redirect(`/?sent=1&email=${encodeURIComponent(normalizedEmail)}`);
   } catch (error) {
     console.error('Erro no login:', error);
     return res.redirect('/?error=1');
   }
 });
 
-// GET /auth/magic — prioriza utilizador admin; senão colaborador (cria registo se necessário)
-router.get('/auth/magic', async (req, res) => {
-  const rawToken = String(req.query.token || '').trim();
-  if (!rawToken) {
+// POST /login/verify-code — valida token por e-mail (15 minutos)
+router.post('/login/verify-code', async (req, res) => {
+  const email = String((req.body && req.body.email) || '')
+    .trim()
+    .toLowerCase();
+  const accessCode = String((req.body && req.body.accessCode) || '').trim();
+  if (!email || !accessCode) {
     return res.redirect('/?error=1');
   }
-  const tokenHash = hashToken(rawToken);
+  const tokenHash = hashToken(accessCode);
+
   try {
     const [rows] = await pool.query(
-      'SELECT id, email, expires_at, used_at FROM magic_login_tokens WHERE token_hash = ? LIMIT 1',
-      [tokenHash]
+      `SELECT id, email, expires_at, used_at
+       FROM magic_login_tokens
+       WHERE email = ? AND token_hash = ?
+       ORDER BY id DESC
+       LIMIT 1`,
+      [email, tokenHash]
     );
+
     if (!rows.length) {
-      return res.redirect('/?error=1');
+      return res.redirect(`/?sent=1&email=${encodeURIComponent(email)}&error=7`);
     }
     const tok = rows[0];
     if (tok.used_at) {
-      return res.redirect('/?error=1');
+      return res.redirect(`/?sent=1&email=${encodeURIComponent(email)}&error=7`);
     }
     const exp = new Date(tok.expires_at);
     if (exp.getTime() < Date.now()) {
-      return res.redirect('/?error=6');
+      return res.redirect(`/?sent=1&email=${encodeURIComponent(email)}&error=7`);
     }
-
-    const email = String(tok.email || '')
-      .trim()
-      .toLowerCase();
 
     await pool.query('UPDATE magic_login_tokens SET used_at = NOW() WHERE id = ?', [tok.id]);
-
-    const [users] = await pool.query(
-      'SELECT id, email, company, role, is_active FROM users WHERE email = ? LIMIT 1',
-      [email]
-    );
-    if (users.length) {
-      const u = users[0];
-      if (!Number(u.is_active)) {
-        return res.redirect('/?error=1');
-      }
-      req.session.userId = u.id;
-      req.session.userEmail = u.email;
-      req.session.userCompany = u.company || 'SAAB';
-      req.session.userRole = u.role || 'admin';
-      req.session.accountType = 'user';
-      return res.redirect('/admin');
-    }
-
-    let [collabs] = await pool.query(
-      'SELECT id, email, company, is_active FROM collaborators WHERE email = ? LIMIT 1',
-      [email]
-    );
-
-    if (!collabs.length) {
-      const dom = emailDomain(email);
-      const name = displayNameFromEmail(email);
-      const company = dom || 'Corporativo';
-      try {
-        await pool.query(
-          'INSERT INTO collaborators (name, email, company, is_active) VALUES (?, ?, ?, 1)',
-          [name, email, company]
-        );
-      } catch (insErr) {
-        if (insErr && insErr.code === 'ER_DUP_ENTRY') {
-          /* outro pedido em paralelo */
-        } else {
-          throw insErr;
-        }
-      }
-      [collabs] = await pool.query(
-        'SELECT id, email, company, is_active FROM collaborators WHERE email = ? LIMIT 1',
-        [email]
-      );
-    }
-
-    if (!collabs.length || !Number(collabs[0].is_active)) {
+    const sessionResult = await establishSessionByEmail(req, email);
+    if (!sessionResult.ok) {
       return res.redirect('/?error=1');
     }
-
-    const c = collabs[0];
-    req.session.userId = c.id;
-    req.session.userEmail = c.email;
-    req.session.userCompany = c.company || 'Sem Empresa';
-    req.session.userRole = 'collaborator';
-    req.session.accountType = 'collaborator';
-    return res.redirect('/dashboard');
+    return res.redirect(sessionResult.redirectTo);
   } catch (error) {
-    console.error('Erro no magic link:', error);
+    console.error('Erro na validação do código:', error);
     return res.redirect('/?error=1');
   }
 });

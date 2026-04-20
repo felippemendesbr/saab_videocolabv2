@@ -32,14 +32,26 @@
             required
             autocomplete="email"
           />
+          <div id="access-code-wrapper" hidden>
+            <label for="accessCode" class="vc-label">Informe o código que chegou no seu e-mail</label>
+            <input
+              type="text"
+              id="accessCode"
+              name="accessCode"
+              class="vc-input vc-login-input"
+              placeholder="Código de acesso"
+              inputmode="numeric"
+              autocomplete="one-time-code"
+              maxlength="6"
+            />
+          </div>
           <p id="login-sent" class="vc-login-success" hidden>
-            Enviamos um link para o seu e-mail. Abra a caixa de entrada e clique no link para entrar.<br />
-            We've sent a link to your email. Open your inbox and click the link to join.
+            Enviamos um código para o seu e-mail. Abra a caixa de entrada e informe o token para prosseguir.
           </p>
           <p id="login-error" class="vc-error-message" hidden></p>
 
-          <button type="submit" class="vc-button vc-login-button">
-            Enviar link de acesso
+          <button type="submit" class="vc-button vc-login-button" id="login-submit-button">
+            Avançar
           </button>
         </form>
       </section>
@@ -50,19 +62,34 @@
         const params = new URLSearchParams(window.location.search);
         const errorEl = document.getElementById('login-error');
         const sentEl = document.getElementById('login-sent');
+        const submitBtn = document.getElementById('login-submit-button');
+        const formEl = document.querySelector('.vc-form');
+        const accessCodeWrapper = document.getElementById('access-code-wrapper');
+        const accessCodeInput = document.getElementById('accessCode');
+        const emailInput = document.getElementById('email');
         const err = params.get('error');
         const sent = params.get('sent');
+        const emailParam = params.get('email');
 
         const messages = {
           '1': 'Não foi possível concluir o acesso. Solicite um novo link ou contacte o suporte.',
           '2': 'Este e-mail está reservado. Utilize o cadastro de usuários no painel administrativo.',
           '3': 'Use apenas e-mails corporativos autorizados (domínio não permitido).',
           '4': 'Não foi possível enviar o e-mail. Tente mais tarde ou contacte o suporte.',
-          '6': 'Este link de acesso expirou ou já foi utilizado. Solicite um novo link.'
+          '6': 'Este link de acesso expirou ou já foi utilizado. Solicite um novo link.',
+          '7': 'Token inválido.'
         };
 
         if (sent === '1' && sentEl) {
           sentEl.hidden = false;
+          if (submitBtn) submitBtn.textContent = 'Prosseguir';
+          if (accessCodeWrapper) accessCodeWrapper.hidden = false;
+          if (formEl) formEl.setAttribute('action', '/login/verify-code');
+          if (emailParam && emailInput) {
+            emailInput.value = emailParam;
+            emailInput.readOnly = true;
+          }
+          if (accessCodeInput) accessCodeInput.required = true;
         }
         if (err && errorEl && messages[err]) {
           errorEl.textContent = messages[err];

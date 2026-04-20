@@ -92,8 +92,44 @@
 
   const BG_COLOR = '#373737';
 
-  /** Alinhar captura ao rAF (~60 Hz) reduz “engasgos” nas dissoluções vs setInterval 30 Hz. */
-  const CANVAS_CAPTURE_FPS = 60;
+  /**
+   * Preset estável por padrão para reduzir travamentos em dispositivos mais fracos.
+   * Pode sobrescrever em runtime com `window.__VIDEO_RENDERER_PRESET = 'quality'`.
+   */
+  const RENDER_PRESETS = {
+    stable: {
+      landscape: { width: 1280, height: 720 },
+      square: { width: 720, height: 720 },
+      captureStreamFps: 24,
+      videoBitsPerSecond: 3500000
+    },
+    quality: {
+      landscape: { width: 1920, height: 1080 },
+      square: { width: 1080, height: 1080 },
+      captureStreamFps: 30,
+      videoBitsPerSecond: 5000000
+    }
+  };
+  const DEFAULT_RENDER_PRESET = 'stable';
+  const PRESET_QUERY_PARAM = 'quality';
+
+  function getActivePreset() {
+    const forcedByWindow =
+      typeof window !== 'undefined' && window.__VIDEO_RENDERER_PRESET
+        ? String(window.__VIDEO_RENDERER_PRESET).trim().toLowerCase()
+        : '';
+    if (forcedByWindow && RENDER_PRESETS[forcedByWindow]) {
+      return RENDER_PRESETS[forcedByWindow];
+    }
+
+    const search =
+      typeof window !== 'undefined' && window.location ? window.location.search : '';
+    if (search && search.includes(PRESET_QUERY_PARAM)) {
+      return RENDER_PRESETS.quality;
+    }
+
+    return RENDER_PRESETS[DEFAULT_RENDER_PRESET];
+  }
 
   let mediaRecorder = null;
   let canvasStream = null;
@@ -183,12 +219,13 @@
   }
 
   function configureCanvasForFormat(canvas, format) {
+    const preset = getActivePreset();
     if (format === 'instagram') {
-      canvas.width = 1080;
-      canvas.height = 1080;
+      canvas.width = preset.square.width;
+      canvas.height = preset.square.height;
     } else {
-      canvas.width = 1920;
-      canvas.height = 1080;
+      canvas.width = preset.landscape.width;
+      canvas.height = preset.landscape.height;
     }
   }
 
@@ -364,7 +401,8 @@
   }
 
   function setupMediaRecorder(canvas, videoPart1, audioTrack, videoPart2) {
-    canvasStream = canvas.captureStream(30);
+    const preset = getActivePreset();
+    canvasStream = canvas.captureStream(preset.captureStreamFps);
     setupMixedAudioTrack(canvasStream, [videoPart1, audioTrack, videoPart2], {
       videoPart1,
       audioTrack,
@@ -377,7 +415,7 @@
     }
 
     const options = {
-      videoBitsPerSecond: 5000000
+      videoBitsPerSecond: preset.videoBitsPerSecond
     };
 
     if (typeof MediaRecorder !== 'undefined') {
