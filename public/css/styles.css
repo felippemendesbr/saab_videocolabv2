@@ -113,11 +113,6 @@ html:has(body.vc-login-page) {
   text-align: center;
   color: #d8d9ea;
   font-size: 0.92rem;
-  margin-bottom: 0.55rem;
-}
-
-.vc-login-subtitle-en {
-  color: #c7cae6;
   margin-bottom: 1.2rem;
 }
 
@@ -384,6 +379,19 @@ html:has(body.vc-login-page) {
 
 .vc-media-ready-status.is-error {
   color: #ffc2cc;
+}
+
+.vc-generation-notice {
+  margin: 0 0 0.65rem;
+  line-height: 1.4;
+}
+
+.vc-generation-notice.is-warning {
+  color: #ffe3a3;
+}
+
+.vc-generation-notice.is-info {
+  color: #b8ddff;
 }
 
 .vc-photo-preview {

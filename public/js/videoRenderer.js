@@ -168,6 +168,9 @@
   let currentReject = null;
 
   let state = null;
+  let isPaused = false;
+  let pausedAtTimestamp = null;
+  let accumulatedPausedMs = 0;
 
   function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
@@ -535,6 +538,9 @@
     currentResolve = null;
     currentReject = null;
     state = null;
+    isPaused = false;
+    pausedAtTimestamp = null;
+    accumulatedPausedMs = 0;
   }
 
   function drawPhotoWithEffects(ctx, canvas, image, zoomScale, blurAmount) {
@@ -719,6 +725,7 @@
 
   function renderFrame(timestamp) {
     if (!isRecording || !state) return;
+    if (isPaused) return;
 
     const {
       canvas,
@@ -735,7 +742,7 @@
       startTimestamp = timestamp;
     }
 
-    const elapsedSeconds = (timestamp - startTimestamp) / 1000;
+    const elapsedSeconds = (timestamp - startTimestamp - accumulatedPausedMs) / 1000;
 
     /* Na foto: PT2 toca PHOTO_PT2_AUDIO_LEAD_S (pré-roll) + PHOTO_PT2_CROSSFADE_S — não repetir na cauda. */
     const part2OverlapInPhoto =
@@ -1052,6 +1059,41 @@
     animationFrameId = requestAnimationFrame(loop);
   }
 
+  function pauseRecordingInternal() {
+    if (!isRecording || isPaused) return;
+    isPaused = true;
+    pausedAtTimestamp = performance.now();
+    if (animationFrameId) {
+      cancelAnimationFrame(animationFrameId);
+      animationFrameId = null;
+    }
+    [state && state.videoPart1, state && state.audioTrack, state && state.videoPart2].forEach(
+      (mediaEl) => {
+        if (!mediaEl) return;
+        try {
+          mediaEl.pause();
+        } catch (e) {}
+      }
+    );
+    if (audioContext && audioContext.state === 'running') {
+      audioContext.suspend().catch(() => {});
+    }
+  }
+
+  function resumeRecordingInternal() {
+    if (!isRecording || !isPaused) return;
+    const now = performance.now();
+    if (pausedAtTimestamp) {
+      accumulatedPausedMs += Math.max(0, now - pausedAtTimestamp);
+    }
+    pausedAtTimestamp = null;
+    isPaused = false;
+    if (audioContext && audioContext.state === 'suspended') {
+      audioContext.resume().catch(() => {});
+    }
+    startRenderLoop();
+  }
+
   async function startRecording(options) {
     const {
       canvas,
@@ -1175,6 +1217,9 @@
         part2Primed = false;
         part2Started = false;
         lastProgressEmitT = 0;
+        isPaused = false;
+        pausedAtTimestamp = null;
+        accumulatedPausedMs = 0;
 
         ctx.fillStyle = BG_COLOR;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -1199,7 +1244,11 @@
     renderTypingName,
     renderInstitutionalVideo,
     startRecording,
-    stopRecording
+    stopRecording,
+    pauseRecording: pauseRecordingInternal,
+    resumeRecording: resumeRecordingInternal,
+    isRecordingActive: () => Boolean(isRecording),
+    isPaused: () => Boolean(isPaused)
   };
 })();
 

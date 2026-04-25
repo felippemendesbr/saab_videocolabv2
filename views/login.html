@@ -14,15 +14,12 @@
         </div>
         <p class="vc-login-subtitle">
           Personalize o vídeo em homenagem às pessoas que fazem parte do Gripen produzido no Brasil.<br />
-          Informe seu e-mail corporativo. Enviaremos um link de acesso válido por poucos minutos.
-        </p>
-        <p class="vc-login-subtitle vc-login-subtitle-en">
-          Personalize the video honoring the people who are part of the Gripen produced in Brazil.<br />
-          Enter your corporate email address. We will send you an access link valid for a few minutes.
+          Informe seu e-mail corporativo.<br /><br />
+          Enviaremos um código de acesso por e-mail.
         </p>
 
         <form class="vc-form" method="POST" action="/login">
-          <label for="email" class="vc-label">E-mail corporativo / Corporate Email</label>
+          <label for="email" class="vc-label">E-mail corporativo</label>
           <input
             type="email"
             id="email"
@@ -46,7 +43,8 @@
             />
           </div>
           <p id="login-sent" class="vc-login-success" hidden>
-            Enviamos um código para o seu e-mail. Abra a caixa de entrada e informe o token para prosseguir.
+            Enviamos um código para o seu e-mail. Ele pode levar alguns minutos para chegar.<br /><br />
+            Abra a caixa de entrada e informe o token para prosseguir.
           </p>
           <p id="login-error" class="vc-error-message" hidden></p>
 

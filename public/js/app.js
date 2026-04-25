@@ -16,6 +16,7 @@
   const formGrid = document.querySelector('.vc-form-grid');
   const generatorWorkspace = document.getElementById('generator-workspace');
   const mediaReadyStatus = document.getElementById('media-ready-status');
+  const generationNotice = document.getElementById('generation-notice');
   const photoPreviewPlaceholder = document.getElementById('photo-preview-placeholder');
   const resultVideo = document.getElementById('result-video');
   const canvas = document.getElementById('preview-canvas');
@@ -24,9 +25,12 @@
   const audioTrack = document.getElementById('audio-track');
   const videoPart2 = document.getElementById('video-part2');
 
-  const MAX_FILE_SIZE_MB = 5;
+  const MAX_FILE_SIZE_MB = 1;
+  /** Largura deve ser pelo menos esta fração maior que a altura (paisagem com tolerância). */
+  const LANDSCAPE_MIN_ASPECT_RATIO = 1.02;
   const CANVAS_BG_COLOR = '#373737';
   const DOWNLOAD_OUTPUT_FORMAT = 'mp4';
+  const GENERATION_CHECKPOINT_KEY = 'vc_generation_checkpoint_v1';
 
   let currentImage = null;
   let collaboratorEmail = null;
@@ -39,11 +43,14 @@
     audioTrack: false,
     videoPart2: false
   };
+  let isGeneratingNow = false;
+  let visibilityPauseActive = false;
+  let generationStartedAt = 0;
+  let checkpointLastSavedAt = 0;
   const LINKEDIN_SHARE_TEXT =
-    `Fazer parte da história do primeiro Gripen produzido no Brasil é algo que vou levar comigo com muito orgulho.\n` +
-    `Ver esse marco acontecer de perto torna tudo ainda mais especial. É a realização de um trabalho construído com dedicação, talento e o esforço de muitas pessoas.\n\n` +
-    `Being part of the story of the first Gripen produced in Brazil is something I will carry with great pride.\n` +
-    `Seeing this milestone happen up close makes it even more meaningful. It reflects the dedication, talent and hard work of many people.\n\n` +
+    `Fazer parte da história do primeiro Gripen produzido no Brasil é motivo de orgulho para todos que ajudam a construir esse marco todos os dias.\n\n` +
+    `É também uma forma de registrar a contribuição individual de cada um que, com talento, dedicação e compromisso, faz parte dessa trajetória.\n\n` +
+    `Se você também faz parte dessa história, acesse www.somospartedogripen.com.br, faça seu vídeo e compartilhe esse orgulho.\n\n` +
     `#EuSouParteDoGripen\n` +
     `#Gripen\n` +
     `#SaabBrasil\n` +
@@ -114,6 +121,57 @@
     mediaReadyStatus.classList.remove('is-ready', 'is-error');
     if (kind === 'ready') mediaReadyStatus.classList.add('is-ready');
     if (kind === 'error') mediaReadyStatus.classList.add('is-error');
+  }
+
+  function setGenerationNotice(kind, text) {
+    if (!generationNotice) return;
+    generationNotice.textContent = text || '';
+    generationNotice.hidden = !text;
+    generationNotice.classList.remove('is-warning', 'is-info');
+    if (kind === 'warning') generationNotice.classList.add('is-warning');
+    if (kind === 'info') generationNotice.classList.add('is-info');
+  }
+
+  function readCheckpoint() {
+    try {
+      const raw = sessionStorage.getItem(GENERATION_CHECKPOINT_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function clearGenerationCheckpoint() {
+    try {
+      sessionStorage.removeItem(GENERATION_CHECKPOINT_KEY);
+    } catch (e) {}
+  }
+
+  function saveGenerationCheckpoint(progress) {
+    if (!isGeneratingNow) return;
+    const now = Date.now();
+    if (now - checkpointLastSavedAt < 1200) return;
+    checkpointLastSavedAt = now;
+    const payload = {
+      progress: Number(progress || 0),
+      startedAt: generationStartedAt,
+      savedAt: now,
+      email: collaboratorEmail || null
+    };
+    try {
+      sessionStorage.setItem(GENERATION_CHECKPOINT_KEY, JSON.stringify(payload));
+    } catch (e) {}
+  }
+
+  function applyDynamicPreset() {
+    const memory = Number(navigator.deviceMemory || 0);
+    const cores = Number(navigator.hardwareConcurrency || 0);
+    const saveData = Boolean(navigator.connection && navigator.connection.saveData);
+    const lowEnd = saveData || (memory > 0 && memory <= 4) || (cores > 0 && cores <= 4);
+    window.__VIDEO_RENDERER_PRESET = lowEnd ? 'stable' : 'quality';
+    return window.__VIDEO_RENDERER_PRESET;
   }
 
   function updateMediaReadyStatusText() {
@@ -212,6 +270,7 @@
       } catch (e) {}
     });
     drawDefaultPreview('Preview da intro será exibido aqui');
+    setGenerationNotice('', '');
     refreshGenerateAvailability();
   }
 
@@ -335,7 +394,7 @@
 
     const sizeMb = file.size / (1024 * 1024);
     if (sizeMb > MAX_FILE_SIZE_MB) {
-      alert('Arquivo muito grande. Tamanho máximo: 5MB.');
+      alert('Arquivo muito grande. Tamanho máximo: 1MB.');
       photoInput.value = '';
       return;
     }
@@ -344,6 +403,20 @@
     reader.onload = () => {
       const img = new Image();
       img.onload = () => {
+        const w = img.naturalWidth;
+        const h = img.naturalHeight;
+        if (!w || !h) {
+          alert('Não foi possível ler as dimensões da imagem. Tente outro arquivo.');
+          photoInput.value = '';
+          return;
+        }
+        if (w / h < LANDSCAPE_MIN_ASPECT_RATIO) {
+          alert(
+            'Envie uma foto em formato paisagem (horizontal). Retratos e imagens muito quadradas não são aceitas.'
+          );
+          photoInput.value = '';
+          return;
+        }
         currentImage = img;
         isPhotoReady = true;
         if (photoPreview) {
@@ -412,6 +485,14 @@
     drawDefaultPreview('Seu vídeo institucional aparecerá aqui');
 
     watchMediaReadiness();
+    const checkpoint = readCheckpoint();
+    if (checkpoint && typeof checkpoint.progress === 'number') {
+      const pct = Math.max(0, Math.min(99, Math.round(checkpoint.progress * 100)));
+      setGenerationNotice(
+        'info',
+        `Uma geração anterior foi interrompida (${pct}%). Se possível, mantenha esta aba ativa durante a nova geração.`
+      );
+    }
 
     fetchCurrentUser();
 
@@ -450,6 +531,16 @@
         trackMetric('generate-click');
 
         const format = 'linkedin';
+        const activePreset = applyDynamicPreset();
+        generationStartedAt = Date.now();
+        checkpointLastSavedAt = 0;
+        isGeneratingNow = true;
+        visibilityPauseActive = false;
+        clearGenerationCheckpoint();
+        setGenerationNotice(
+          'warning',
+          `Para melhor performance, mantenha esta aba ativa durante a geração. Preset automático: ${activePreset}.`
+        );
 
         unlockMediaPlayback([videoPart1, audioTrack, videoPart2])
           .then(() =>
@@ -463,6 +554,7 @@
               format,
               onProgress: (value) => {
                 setProgressValue(value);
+                saveGenerationCheckpoint(value);
               }
             })
           )
@@ -498,6 +590,8 @@
             if (generateButton) {
               generateButton.hidden = true;
             }
+            clearGenerationCheckpoint();
+            setGenerationNotice('', '');
           })
           .catch((err) => {
             console.error('Erro ao gerar vídeo:', err);
@@ -506,11 +600,36 @@
             );
           })
           .finally(() => {
+            isGeneratingNow = false;
+            visibilityPauseActive = false;
             showProgress(false);
             setGenerateEnabled(true);
           });
       });
     }
+
+    document.addEventListener('visibilitychange', () => {
+      if (!isGeneratingNow || !window.VideoRenderer) return;
+      if (document.hidden) {
+        if (window.VideoRenderer.isRecordingActive && window.VideoRenderer.isRecordingActive()) {
+          window.VideoRenderer.pauseRecording();
+          visibilityPauseActive = true;
+          setGenerationNotice(
+            'warning',
+            'Geração pausada porque a aba ficou em segundo plano. Volte para esta aba para continuar.'
+          );
+        }
+        return;
+      }
+      if (visibilityPauseActive && window.VideoRenderer.isPaused && window.VideoRenderer.isPaused()) {
+        window.VideoRenderer.resumeRecording();
+        visibilityPauseActive = false;
+        setGenerationNotice(
+          'info',
+          'Geração retomada. Para evitar travamentos, mantenha esta aba visível até o final.'
+        );
+      }
+    });
 
     if (downloadButton) {
       downloadButton.addEventListener('click', (event) => {

@@ -113,7 +113,7 @@ router.post('/login', async (req, res) => {
 
     const rawCode = randomCode();
     const tokenHash = hashToken(rawCode);
-    const expires = new Date(Date.now() + 15 * 60 * 1000);
+    const expires = new Date(Date.now() + 30 * 60 * 1000);
 
     await pool.query(
       'UPDATE magic_login_tokens SET used_at = NOW() WHERE email = ? AND used_at IS NULL',
@@ -139,7 +139,7 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// POST /login/verify-code — valida token por e-mail (15 minutos)
+// POST /login/verify-code — valida token por e-mail (30 minutos)
 router.post('/login/verify-code', async (req, res) => {
   const email = String((req.body && req.body.email) || '')
     .trim()
