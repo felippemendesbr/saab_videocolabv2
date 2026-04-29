@@ -11,6 +11,7 @@ const XLSX = require('xlsx');
 const authRoutes = require('./routes/authRoutes');
 const { pool, initDatabase } = require('./db');
 const { convertWebmToMp4Buffer } = require('./lib/convertio');
+const { sendOperationalAlertEmail, smtpConfigured } = require('./lib/mailer');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -151,6 +152,68 @@ function normalizeLogString(value, maxLen) {
 function normalizeLogInt(value) {
   const n = Number(value);
   return Number.isFinite(n) ? Math.round(n) : null;
+}
+
+function getVideoErrorAlertRecipient() {
+  return String(process.env.VIDEO_ERROR_ALERT_EMAIL || 'suporte@noahsolutions.com.br')
+    .trim()
+    .toLowerCase();
+}
+
+function formatAlertLine(label, value) {
+  const v =
+    value == null || value === '' || Number.isNaN(value)
+      ? '-'
+      : typeof value === 'object'
+        ? JSON.stringify(value)
+        : String(value);
+  return `${label}: ${v}`;
+}
+
+async function notifyVideoErrorByEmail(payload) {
+  const recipient = getVideoErrorAlertRecipient();
+  if (!recipient || !smtpConfigured()) return;
+  const nowIso = new Date().toISOString();
+  const subject = `🚨 [ALERTA CRÍTICO] ${payload.eventType} no Video Collab (${payload.email || 'sem-email'})`;
+  const lines = [
+    'ALERTA AUTOMÁTICO DE ERRO DE GERAÇÃO/CONVERSÃO',
+    '',
+    formatAlertLine('Horário (UTC)', nowIso),
+    formatAlertLine('Evento', payload.eventType),
+    formatAlertLine('Status', payload.status),
+    formatAlertLine('Mensagem', payload.message),
+    '',
+    formatAlertLine('E-mail usuário', payload.email),
+    formatAlertLine('Empresa', payload.company),
+    formatAlertLine('User ID', payload.userId),
+    formatAlertLine('Sessão accountType', payload.accountType),
+    formatAlertLine('Sessão userRole', payload.userRole),
+    '',
+    formatAlertLine('Browser', payload.browser),
+    formatAlertLine('OS', payload.os),
+    formatAlertLine('Device type', payload.deviceType),
+    formatAlertLine('Preset', payload.preset),
+    formatAlertLine('Format', payload.format),
+    formatAlertLine('Duração (ms)', payload.durationMs),
+    formatAlertLine('WEBM size (bytes)', payload.webmSizeBytes),
+    formatAlertLine('MP4 size (bytes)', payload.mp4SizeBytes),
+    formatAlertLine('Viewport', `${payload.viewportWidth || '-'}x${payload.viewportHeight || '-'}`),
+    formatAlertLine('Screen', `${payload.screenWidth || '-'}x${payload.screenHeight || '-'}`),
+    formatAlertLine('Idioma', payload.language),
+    formatAlertLine('Timezone', payload.timezone),
+    '',
+    formatAlertLine('IP', payload.ipAddress),
+    formatAlertLine('Forwarded For', payload.forwardedFor),
+    formatAlertLine('User-Agent', payload.userAgent),
+    '',
+    'Payload bruto do evento:',
+    payload.rawBody ? JSON.stringify(payload.rawBody, null, 2) : '-'
+  ];
+  await sendOperationalAlertEmail({
+    to: recipient,
+    subject,
+    text: lines.join('\n')
+  });
 }
 
 async function emailTakenByUser(email, excludeUserId) {
@@ -438,6 +501,7 @@ app.post('/api/logs/video-generation', ensureAuthenticated, ensureCollaborator, 
     const language = normalizeLogString(body.language, 20);
     const timezone = normalizeLogString(body.timezone, 80);
     const ipAddress = normalizeLogString(req.ip || '', 80);
+    const forwardedFor = normalizeLogString(req.headers['x-forwarded-for'] || '', 512);
 
     await pool.query(
       `INSERT INTO video_generation_logs (
@@ -471,6 +535,41 @@ app.post('/api/logs/video-generation', ensureAuthenticated, ensureCollaborator, 
         ipAddress
       ]
     );
+
+    if (eventType === 'generate_error' || eventType === 'convert_error') {
+      try {
+        await notifyVideoErrorByEmail({
+          eventType,
+          status,
+          message,
+          userId: req.session.userId || null,
+          email: req.session.userEmail || null,
+          company: req.session.userCompany || 'Sem Empresa',
+          accountType: req.session.accountType || null,
+          userRole: req.session.userRole || null,
+          browser,
+          os: osName,
+          deviceType,
+          preset,
+          format,
+          durationMs,
+          webmSizeBytes,
+          mp4SizeBytes,
+          viewportWidth,
+          viewportHeight,
+          screenWidth,
+          screenHeight,
+          language,
+          timezone,
+          ipAddress,
+          forwardedFor,
+          userAgent,
+          rawBody: body
+        });
+      } catch (mailErr) {
+        console.error('Aviso: falha ao enviar alerta de erro de vídeo por e-mail:', mailErr);
+      }
+    }
 
     res.json({ ok: true });
   } catch (error) {

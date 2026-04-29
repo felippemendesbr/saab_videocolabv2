@@ -44,6 +44,12 @@
     audioTrack: false,
     videoPart2: false
   };
+  let mediaLoadState = {
+    videoPart1: { status: 'pending', reason: '' },
+    audioTrack: { status: 'pending', reason: '' },
+    videoPart2: { status: 'pending', reason: '' }
+  };
+  let mediaLoadLogFinalized = false;
   let isGeneratingNow = false;
   let visibilityPauseActive = false;
   let generationStartedAt = 0;
@@ -252,6 +258,47 @@
     );
   }
 
+  function mediaErrorCodeToText(code) {
+    const n = Number(code || 0);
+    if (n === 1) return 'MEDIA_ERR_ABORTED';
+    if (n === 2) return 'MEDIA_ERR_NETWORK';
+    if (n === 3) return 'MEDIA_ERR_DECODE';
+    if (n === 4) return 'MEDIA_ERR_SRC_NOT_SUPPORTED';
+    return 'MEDIA_ERR_UNKNOWN';
+  }
+
+  function collectMediaFailureReason(key, mediaEl) {
+    if (!mediaEl) return `${key}: elemento de mídia ausente`;
+    const errorCode = mediaErrorCodeToText(mediaEl.error && mediaEl.error.code);
+    const networkState = Number(mediaEl.networkState || 0);
+    const readyState = Number(mediaEl.readyState || 0);
+    const src = mediaEl.currentSrc || mediaEl.src || key;
+    return `${key}: ${errorCode} (networkState=${networkState}, readyState=${readyState}, src=${src})`;
+  }
+
+  function maybeFinalizeMediaLoadLog() {
+    if (mediaLoadLogFinalized) return;
+    const entries = Object.entries(mediaLoadState);
+    const hasPending = entries.some(([, state]) => state.status === 'pending');
+    if (hasPending) return;
+    mediaLoadLogFinalized = true;
+    const failedEntries = entries.filter(([, state]) => state.status === 'error');
+    if (!failedEntries.length) {
+      logVideoGenerationEvent('media_resources_loaded', {
+        status: 'success',
+        message: 'Todos os recursos de mídia foram carregados com sucesso.'
+      });
+      return;
+    }
+    const reasonText = failedEntries
+      .map(([key, state]) => state.reason || `${key}: falha sem detalhe`)
+      .join(' | ');
+    logVideoGenerationEvent('media_resources_loaded', {
+      status: 'error',
+      message: `Falha no carregamento de recursos: ${reasonText}`
+    });
+  }
+
   function watchMediaReadiness() {
     const entries = [
       ['videoPart1', videoPart1],
@@ -262,13 +309,20 @@
       if (!mediaEl) return;
       const markReady = () => {
         mediaReadiness[key] = true;
+        mediaLoadState[key] = { status: 'ready', reason: '' };
         updateMediaReadyStatusText();
         refreshGenerateAvailability();
+        maybeFinalizeMediaLoadLog();
       };
       const markError = () => {
         mediaReadiness[key] = false;
+        mediaLoadState[key] = {
+          status: 'error',
+          reason: collectMediaFailureReason(key, mediaEl)
+        };
         setMediaStatus('error', `Falha ao carregar recurso: ${key}. Atualize a página e tente novamente.`);
         refreshGenerateAvailability();
+        maybeFinalizeMediaLoadLog();
       };
       const hasEnoughData = Number(mediaEl.readyState || 0) >= 4;
       if (hasEnoughData) {
