@@ -16,11 +16,21 @@ const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3001;
 
-const DOMAINS_ADMIN_EMAIL = (
-  process.env.DOMAINS_ADMIN_EMAIL || 'comunicacao.saab@owly.com.br'
-)
-  .trim()
-  .toLowerCase();
+function getDomainsAdminEmails() {
+  const csv = String(process.env.DOMAINS_ADMIN_EMAILS || '')
+    .split(',')
+    .map((v) => String(v || '').trim().toLowerCase())
+    .filter(Boolean);
+  const legacy = String(process.env.DOMAINS_ADMIN_EMAIL || '')
+    .trim()
+    .toLowerCase();
+  if (legacy) csv.push(legacy);
+  if (!csv.length) {
+    csv.push('comunicacao.saab@owly.com.br');
+  }
+  return new Set(csv);
+}
+const DOMAINS_ADMIN_EMAILS = getDomainsAdminEmails();
 
 const uploadsDir = path.join(os.tmpdir(), 'saab-videocolab-uploads');
 if (!fs.existsSync(uploadsDir)) {
@@ -111,7 +121,7 @@ function ensureDomainsAdmin(req, res, next) {
   const em = String(req.session.userEmail || '')
     .trim()
     .toLowerCase();
-  if (em === DOMAINS_ADMIN_EMAIL) {
+  if (DOMAINS_ADMIN_EMAILS.has(em)) {
     return next();
   }
   return res.status(403).json({ error: 'Acesso restrito a esta área.' });
@@ -130,6 +140,17 @@ function getDownloadOwnerUserId(req) {
     return req.session.userId || null;
   }
   return null;
+}
+
+function normalizeLogString(value, maxLen) {
+  const s = String(value == null ? '' : value).trim();
+  if (!s) return null;
+  return s.slice(0, maxLen);
+}
+
+function normalizeLogInt(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.round(n) : null;
 }
 
 async function emailTakenByUser(email, excludeUserId) {
@@ -173,7 +194,7 @@ app.get('/api/me', ensureAuthenticated, (req, res) => {
     company: req.session.userCompany || null,
     role: req.session.userRole || 'user',
     accountType: req.session.accountType || 'collaborator',
-    canManageDomains: email === DOMAINS_ADMIN_EMAIL
+    canManageDomains: DOMAINS_ADMIN_EMAILS.has(email)
   });
 });
 
@@ -391,6 +412,124 @@ app.post('/api/metrics/instagram-share-click', ensureAuthenticated, ensureCollab
   } catch (error) {
     console.error('Erro ao registrar clique Instagram:', error);
     res.status(500).json({ error: 'Falha ao registrar evento.' });
+  }
+});
+
+app.post('/api/logs/video-generation', ensureAuthenticated, ensureCollaborator, async (req, res) => {
+  try {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const eventType = normalizeLogString(body.eventType || body.event_type || 'unknown', 64);
+    const status = normalizeLogString(body.status || 'info', 24) || 'info';
+    const message = normalizeLogString(body.message, 4000);
+    const browser = normalizeLogString(body.browser, 120);
+    const osName = normalizeLogString(body.os, 120);
+    const deviceType = normalizeLogString(body.deviceType || body.device_type, 40);
+    const userAgent = normalizeLogString(body.userAgent || req.headers['user-agent'] || '', 4000);
+    const appVersion = normalizeLogString(body.appVersion, 40);
+    const preset = normalizeLogString(body.preset, 40);
+    const format = normalizeLogString(body.format, 40);
+    const webmSizeBytes = normalizeLogInt(body.webmSizeBytes);
+    const mp4SizeBytes = normalizeLogInt(body.mp4SizeBytes);
+    const durationMs = normalizeLogInt(body.durationMs);
+    const viewportWidth = normalizeLogInt(body.viewportWidth);
+    const viewportHeight = normalizeLogInt(body.viewportHeight);
+    const screenWidth = normalizeLogInt(body.screenWidth);
+    const screenHeight = normalizeLogInt(body.screenHeight);
+    const language = normalizeLogString(body.language, 20);
+    const timezone = normalizeLogString(body.timezone, 80);
+    const ipAddress = normalizeLogString(req.ip || '', 80);
+
+    await pool.query(
+      `INSERT INTO video_generation_logs (
+        user_id, email, company, event_type, status, message, browser, os, device_type,
+        user_agent, app_version, preset, format, webm_size_bytes, mp4_size_bytes, duration_ms,
+        viewport_width, viewport_height, screen_width, screen_height, language, timezone, ip_address
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        req.session.userId || null,
+        req.session.userEmail || null,
+        req.session.userCompany || 'Sem Empresa',
+        eventType || 'unknown',
+        status,
+        message,
+        browser,
+        osName,
+        deviceType,
+        userAgent,
+        appVersion,
+        preset,
+        format,
+        webmSizeBytes,
+        mp4SizeBytes,
+        durationMs,
+        viewportWidth,
+        viewportHeight,
+        screenWidth,
+        screenHeight,
+        language,
+        timezone,
+        ipAddress
+      ]
+    );
+
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Erro ao registrar log de geração de vídeo:', error);
+    res.status(500).json({ error: 'Falha ao registrar log de geração.' });
+  }
+});
+
+app.get('/api/admin/video-generation-logs', ensureAuthenticated, ensureAdmin, async (req, res) => {
+  try {
+    const email = String(req.query.email || '').trim().toLowerCase();
+    const status = String(req.query.status || '').trim().toLowerCase();
+    const eventType = String(req.query.eventType || '').trim().toLowerCase();
+    const from = String(req.query.from || '').trim();
+    const to = String(req.query.to || '').trim();
+    const limitRaw = Number(req.query.limit || 200);
+    const limit = Math.max(1, Math.min(500, Number.isFinite(limitRaw) ? limitRaw : 200));
+
+    const where = [];
+    const params = [];
+
+    if (email) {
+      where.push('email = ?');
+      params.push(email);
+    }
+    if (status) {
+      where.push('status = ?');
+      params.push(status);
+    }
+    if (eventType) {
+      where.push('event_type = ?');
+      params.push(eventType);
+    }
+    if (from) {
+      where.push('created_at >= ?');
+      params.push(`${from} 00:00:00`);
+    }
+    if (to) {
+      where.push('created_at <= ?');
+      params.push(`${to} 23:59:59`);
+    }
+
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const [rows] = await pool.query(
+      `SELECT
+        id, user_id, email, company, event_type, status, message, browser, os, device_type,
+        app_version, preset, format, webm_size_bytes, mp4_size_bytes, duration_ms, viewport_width,
+        viewport_height, screen_width, screen_height, language, timezone, ip_address, created_at
+       FROM video_generation_logs
+       ${whereSql}
+       ORDER BY id DESC
+       LIMIT ?`,
+      [...params, limit]
+    );
+
+    res.json({ logs: rows });
+  } catch (error) {
+    console.error('Erro ao listar logs de geração de vídeo:', error);
+    res.status(500).json({ error: 'Falha ao listar logs de geração.' });
   }
 });
 

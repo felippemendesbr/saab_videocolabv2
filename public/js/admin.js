@@ -70,6 +70,20 @@
   const socialShareBarCanvas = document.getElementById('social-share-bar-chart');
   const socialShareBarCtx = socialShareBarCanvas?.getContext('2d');
   const recentDownloadsByCompanyList = document.getElementById('recent-downloads-by-company-list');
+  const videoGenerationLogsList = document.getElementById('video-generation-logs-list');
+  const videoGenerationLogsListMenu = document.getElementById('video-generation-logs-list-menu');
+  const videoLogFilterEmail = document.getElementById('video-log-filter-email');
+  const videoLogFilterEmailMenu = document.getElementById('video-log-filter-email-menu');
+  const videoLogFilterStatus = document.getElementById('video-log-filter-status');
+  const videoLogFilterStatusMenu = document.getElementById('video-log-filter-status-menu');
+  const videoLogFilterEvent = document.getElementById('video-log-filter-event');
+  const videoLogFilterEventMenu = document.getElementById('video-log-filter-event-menu');
+  const videoLogFilterFrom = document.getElementById('video-log-filter-from');
+  const videoLogFilterFromMenu = document.getElementById('video-log-filter-from-menu');
+  const videoLogFilterTo = document.getElementById('video-log-filter-to');
+  const videoLogFilterToMenu = document.getElementById('video-log-filter-to-menu');
+  const videoLogFilterApply = document.getElementById('video-log-filter-apply');
+  const videoLogFilterApplyMenu = document.getElementById('video-log-filter-apply-menu');
   const collabFormCancelBtn = document.getElementById('collaborators-cancel-new');
   const usersListControls = document.getElementById('users-list-controls');
   const collaboratorsListControls = document.getElementById('collaborators-list-controls');
@@ -275,6 +289,12 @@
     return adjusted.toLocaleString('pt-BR');
   }
 
+  function formatBytes(value) {
+    const n = Number(value || 0);
+    if (!Number.isFinite(n) || n <= 0) return '-';
+    return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+  }
+
   function renderRecentDownloadsByCompany(rows) {
     if (!recentDownloadsByCompanyList) return;
     if (!rows || !rows.length) {
@@ -294,6 +314,80 @@
         `
       )
       .join('');
+  }
+
+  function renderVideoGenerationLogs(rows, targetListEl) {
+    const outputEl = targetListEl || videoGenerationLogsList || videoGenerationLogsListMenu;
+    if (!outputEl) return;
+    if (!rows || !rows.length) {
+      outputEl.innerHTML = '<tr><td colspan="7">Nenhum log encontrado.</td></tr>';
+      return;
+    }
+    outputEl.innerHTML = rows
+      .map((r) => {
+        const env = [r.browser || '-', r.os || '-'].join(' / ');
+        const size = r.mp4_size_bytes
+          ? `MP4: ${formatBytes(r.mp4_size_bytes)}`
+          : r.webm_size_bytes
+            ? `WEBM: ${formatBytes(r.webm_size_bytes)}`
+            : '-';
+        return `
+          <tr>
+            <td>${formatDateTime(r.created_at)}</td>
+            <td>${r.email || '-'}</td>
+            <td>${r.event_type || '-'}</td>
+            <td>${r.status || '-'}</td>
+            <td>${env}</td>
+            <td>${size}</td>
+            <td>${r.message || '-'}</td>
+          </tr>
+        `;
+      })
+      .join('');
+  }
+
+  async function loadVideoGenerationLogs(fromMenuTab) {
+    const usingMenu = Boolean(fromMenuTab);
+    const outputEl = usingMenu
+      ? videoGenerationLogsListMenu || videoGenerationLogsList
+      : videoGenerationLogsList || videoGenerationLogsListMenu;
+    if (!outputEl) return;
+    try {
+      const params = new URLSearchParams();
+      const emailInput = usingMenu
+        ? videoLogFilterEmailMenu || videoLogFilterEmail
+        : videoLogFilterEmail || videoLogFilterEmailMenu;
+      const statusInput = usingMenu
+        ? videoLogFilterStatusMenu || videoLogFilterStatus
+        : videoLogFilterStatus || videoLogFilterStatusMenu;
+      const eventInput = usingMenu
+        ? videoLogFilterEventMenu || videoLogFilterEvent
+        : videoLogFilterEvent || videoLogFilterEventMenu;
+      const fromInput = usingMenu
+        ? videoLogFilterFromMenu || videoLogFilterFrom
+        : videoLogFilterFrom || videoLogFilterFromMenu;
+      const toInput = usingMenu
+        ? videoLogFilterToMenu || videoLogFilterTo
+        : videoLogFilterTo || videoLogFilterToMenu;
+      const email = (emailInput && emailInput.value.trim().toLowerCase()) || '';
+      const status = (statusInput && statusInput.value.trim().toLowerCase()) || '';
+      const eventType = (eventInput && eventInput.value.trim().toLowerCase()) || '';
+      const from = (fromInput && fromInput.value) || '';
+      const to = (toInput && toInput.value) || '';
+      if (email) params.set('email', email);
+      if (status) params.set('status', status);
+      if (eventType) params.set('eventType', eventType);
+      if (from) params.set('from', from);
+      if (to) params.set('to', to);
+      params.set('limit', '200');
+      const res = await fetch(`/api/admin/video-generation-logs?${params.toString()}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Falha ao carregar logs de geração');
+      renderVideoGenerationLogs(data.logs || [], outputEl);
+    } catch (error) {
+      console.error('Erro ao carregar logs de geração:', error);
+      renderVideoGenerationLogs([], outputEl);
+    }
   }
 
   function compareValues(a, b, key) {
@@ -510,6 +604,9 @@
     if (tab === 'domains') {
       loadDomains();
     }
+    if (tab === 'video-logs') {
+      loadVideoGenerationLogs(true);
+    }
   }
 
   async function initDomainsAccess() {
@@ -640,6 +737,7 @@
       );
       drawSocialShareBars(socialShareBarCtx, socialShareBarCanvas, data.shareClicksByNetwork || []);
       renderRecentDownloadsByCompany(data.recentDownloadsByCompany || []);
+      await loadVideoGenerationLogs();
       allUsers = data.users || [];
       allCollaborators = data.collaborators || [];
       applyFilters();
@@ -881,6 +979,12 @@
   }
   if (dashboardRefreshButton) {
     dashboardRefreshButton.addEventListener('click', () => loadMetrics());
+  }
+  if (videoLogFilterApply) {
+    videoLogFilterApply.addEventListener('click', () => loadVideoGenerationLogs(false));
+  }
+  if (videoLogFilterApplyMenu) {
+    videoLogFilterApplyMenu.addEventListener('click', () => loadVideoGenerationLogs(true));
   }
 
   if (collabFormCancelBtn) {

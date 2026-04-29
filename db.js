@@ -10,8 +10,19 @@ function requiredEnv(name) {
   return String(v).trim();
 }
 
-/** E-mail opcional: usado no seed do admin e na mensagem especial de login (error=2). */
-const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || '').trim();
+/** E-mails opcionais para seed de admins. Aceita ADMIN_EMAILS (csv) e ADMIN_EMAIL (legado). */
+function getInitialAdminEmails() {
+  const csv = String(process.env.ADMIN_EMAILS || '')
+    .split(',')
+    .map((v) => String(v || '').trim().toLowerCase())
+    .filter(Boolean);
+  const legacy = String(process.env.ADMIN_EMAIL || '')
+    .trim()
+    .toLowerCase();
+  if (legacy) csv.push(legacy);
+  return Array.from(new Set(csv));
+}
+const INITIAL_ADMIN_EMAILS = getInitialAdminEmails();
 
 const pool = mysql.createPool({
   host: requiredEnv('DB_HOST'),
@@ -139,6 +150,40 @@ async function initDatabase() {
     )
   `);
 
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS video_generation_logs (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      user_id INT NULL,
+      email VARCHAR(255) NULL,
+      company VARCHAR(255) NULL,
+      event_type VARCHAR(64) NOT NULL,
+      status VARCHAR(24) NOT NULL DEFAULT 'info',
+      message TEXT NULL,
+      browser VARCHAR(120) NULL,
+      os VARCHAR(120) NULL,
+      device_type VARCHAR(40) NULL,
+      user_agent TEXT NULL,
+      app_version VARCHAR(40) NULL,
+      preset VARCHAR(40) NULL,
+      format VARCHAR(40) NULL,
+      webm_size_bytes BIGINT NULL,
+      mp4_size_bytes BIGINT NULL,
+      duration_ms INT NULL,
+      viewport_width INT NULL,
+      viewport_height INT NULL,
+      screen_width INT NULL,
+      screen_height INT NULL,
+      language VARCHAR(20) NULL,
+      timezone VARCHAR(80) NULL,
+      ip_address VARCHAR(80) NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_vgl_created_at (created_at),
+      INDEX idx_vgl_email (email),
+      INDEX idx_vgl_status (status),
+      INDEX idx_vgl_event_type (event_type)
+    )
+  `);
+
   const [[domainCount]] = await pool.query(
     'SELECT COUNT(*) AS c FROM allowed_email_domains'
   );
@@ -150,18 +195,18 @@ async function initDatabase() {
     console.log('Domínio inicial owly.com.br adicionado (lista de domínios permitidos).');
   }
 
-  if (ADMIN_EMAIL) {
+  for (const adminEmail of INITIAL_ADMIN_EMAILS) {
     const [existingAdmin] = await pool.query(
       'SELECT id FROM users WHERE email = ? LIMIT 1',
-      [ADMIN_EMAIL]
+      [adminEmail]
     );
 
     if (!existingAdmin.length) {
       await pool.query(
         'INSERT INTO users (email, company, role, is_active) VALUES (?, ?, ?, 1)',
-        [ADMIN_EMAIL, 'SAAB Comunicação', 'admin']
+        [adminEmail, 'SAAB Comunicação', 'admin']
       );
-      console.log(`Admin inicial criado (${ADMIN_EMAIL})`);
+      console.log(`Admin inicial criado (${adminEmail})`);
     }
   }
 }
@@ -169,5 +214,5 @@ async function initDatabase() {
 module.exports = {
   pool,
   initDatabase,
-  ADMIN_EMAIL
+  INITIAL_ADMIN_EMAILS
 };

@@ -47,6 +47,12 @@
           </svg>
           <span>Domínios</span>
         </button>
+        <button class="vc-sidebar-item" data-tab="video-logs">
+          <svg class="vc-menu-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 5h16M4 12h16M4 19h16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+          <span>Logs de Geração</span>
+        </button>
       </aside>
 
       <section class="vc-admin-content">
@@ -164,6 +170,56 @@
                     </tr>
                   </thead>
                   <tbody id="recent-downloads-by-company-list"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div class="vc-dashboard-panel vc-dashboard-table-panel">
+            <h3 class="vc-dashboard-panel-title">Logs de geração de vídeo</h3>
+            <div class="vc-dashboard-panel-body">
+              <div class="vc-crud-filters">
+                <p class="vc-section-label">Filtros</p>
+                <div class="vc-crud-form" style="grid-template-columns: 1.2fr 0.8fr 1fr 0.8fr 0.8fr auto;">
+                  <input type="text" id="video-log-filter-email" class="vc-input" placeholder="email@empresa.com" />
+                  <select id="video-log-filter-status" class="vc-input">
+                    <option value="">Status (todos)</option>
+                    <option value="success">success</option>
+                    <option value="error">error</option>
+                    <option value="info">info</option>
+                    <option value="warning">warning</option>
+                  </select>
+                  <select id="video-log-filter-event" class="vc-input">
+                    <option value="">Evento (todos)</option>
+                    <option value="token_sent">token_sent</option>
+                    <option value="generate_start">generate_start</option>
+                    <option value="generate_success">generate_success</option>
+                    <option value="generate_error">generate_error</option>
+                    <option value="generate_paused_hidden">generate_paused_hidden</option>
+                    <option value="generate_resumed_visible">generate_resumed_visible</option>
+                    <option value="convert_start">convert_start</option>
+                    <option value="convert_success">convert_success</option>
+                    <option value="convert_error">convert_error</option>
+                  </select>
+                  <input type="date" id="video-log-filter-from" class="vc-input" />
+                  <input type="date" id="video-log-filter-to" class="vc-input" />
+                  <button id="video-log-filter-apply" class="vc-button vc-crud-ghost" type="button">Aplicar</button>
+                </div>
+              </div>
+              <div class="vc-table-wrapper">
+                <table class="vc-crud-table vc-zebra-table">
+                  <thead>
+                    <tr>
+                      <th>Data/Hora</th>
+                      <th>E-mail</th>
+                      <th>Evento</th>
+                      <th>Status</th>
+                      <th>Navegador / SO</th>
+                      <th>Tamanho</th>
+                      <th>Mensagem</th>
+                    </tr>
+                  </thead>
+                  <tbody id="video-generation-logs-list"></tbody>
                 </table>
               </div>
             </div>
@@ -356,6 +412,58 @@
               </thead>
               <tbody id="domains-list"></tbody>
             </table>
+          </div>
+        </section>
+
+        <section class="vc-card vc-tab-panel vc-hidden" data-panel="video-logs">
+          <div class="vc-dashboard-panel vc-dashboard-table-panel">
+            <h3 class="vc-dashboard-panel-title">Logs de geração de vídeo</h3>
+            <div class="vc-dashboard-panel-body">
+              <div class="vc-crud-filters">
+                <p class="vc-section-label">Filtros</p>
+                <div class="vc-crud-form" style="grid-template-columns: 1.2fr 0.8fr 1fr 0.8fr 0.8fr auto;">
+                  <input type="text" id="video-log-filter-email-menu" class="vc-input" placeholder="email@empresa.com" />
+                  <select id="video-log-filter-status-menu" class="vc-input">
+                    <option value="">Status (todos)</option>
+                    <option value="success">success</option>
+                    <option value="error">error</option>
+                    <option value="info">info</option>
+                    <option value="warning">warning</option>
+                  </select>
+                  <select id="video-log-filter-event-menu" class="vc-input">
+                    <option value="">Evento (todos)</option>
+                    <option value="token_sent">token_sent</option>
+                    <option value="generate_start">generate_start</option>
+                    <option value="generate_success">generate_success</option>
+                    <option value="generate_error">generate_error</option>
+                    <option value="generate_paused_hidden">generate_paused_hidden</option>
+                    <option value="generate_resumed_visible">generate_resumed_visible</option>
+                    <option value="convert_start">convert_start</option>
+                    <option value="convert_success">convert_success</option>
+                    <option value="convert_error">convert_error</option>
+                  </select>
+                  <input type="date" id="video-log-filter-from-menu" class="vc-input" />
+                  <input type="date" id="video-log-filter-to-menu" class="vc-input" />
+                  <button id="video-log-filter-apply-menu" class="vc-button vc-crud-ghost" type="button">Aplicar</button>
+                </div>
+              </div>
+              <div class="vc-table-wrapper">
+                <table class="vc-crud-table vc-zebra-table">
+                  <thead>
+                    <tr>
+                      <th>Data/Hora</th>
+                      <th>E-mail</th>
+                      <th>Evento</th>
+                      <th>Status</th>
+                      <th>Navegador / SO</th>
+                      <th>Tamanho</th>
+                      <th>Mensagem</th>
+                    </tr>
+                  </thead>
+                  <tbody id="video-generation-logs-list-menu"></tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </section>
 

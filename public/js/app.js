@@ -30,6 +30,7 @@
   const LANDSCAPE_MIN_ASPECT_RATIO = 1.02;
   const CANVAS_BG_COLOR = '#373737';
   const DOWNLOAD_OUTPUT_FORMAT = 'mp4';
+  const MIN_VALID_MP4_BYTES = 15 * 1024 * 1024;
   const GENERATION_CHECKPOINT_KEY = 'vc_generation_checkpoint_v1';
 
   let currentImage = null;
@@ -47,6 +48,7 @@
   let visibilityPauseActive = false;
   let generationStartedAt = 0;
   let checkpointLastSavedAt = 0;
+  let generationSessionId = null;
   const LINKEDIN_SHARE_TEXT =
     `Fazer parte da história do primeiro Gripen produzido no Brasil é motivo de orgulho para todos que ajudam a construir esse marco todos os dias.\n\n` +
     `É também uma forma de registrar a contribuição individual de cada um que, com talento, dedicação e compromisso, faz parte dessa trajetória.\n\n` +
@@ -61,6 +63,73 @@
     const payload =
       body && typeof body === 'object' && Object.keys(body).length ? body : {};
     return fetch(`/api/metrics/${eventType}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+      .then(() => {})
+      .catch(() => {});
+  }
+
+  function detectClientContext() {
+    const nav = window.navigator || {};
+    const ua = String(nav.userAgent || '');
+    const lower = ua.toLowerCase();
+    let browser = 'Desconhecido';
+    if (lower.includes('edg/')) browser = 'Edge';
+    else if (lower.includes('chrome/') && !lower.includes('edg/')) browser = 'Chrome';
+    else if (lower.includes('safari/') && !lower.includes('chrome/')) browser = 'Safari';
+    else if (lower.includes('firefox/')) browser = 'Firefox';
+
+    let os = 'Desconhecido';
+    if (lower.includes('windows nt')) os = 'Windows';
+    else if (lower.includes('android')) os = 'Android';
+    else if (lower.includes('iphone') || lower.includes('ipad') || lower.includes('ipod')) os = 'iOS';
+    else if (lower.includes('mac os')) os = 'macOS';
+    else if (lower.includes('linux')) os = 'Linux';
+
+    let deviceType = 'desktop';
+    if (/android|iphone|ipad|ipod|mobile/i.test(ua)) deviceType = 'mobile';
+    if (/ipad|tablet/i.test(ua)) deviceType = 'tablet';
+
+    const viewportWidth = window.innerWidth || null;
+    const viewportHeight = window.innerHeight || null;
+    const screenWidth = window.screen && window.screen.width ? window.screen.width : null;
+    const screenHeight = window.screen && window.screen.height ? window.screen.height : null;
+    const timezone =
+      (window.Intl &&
+        window.Intl.DateTimeFormat &&
+        window.Intl.DateTimeFormat().resolvedOptions().timeZone) ||
+      '';
+
+    return {
+      browser,
+      os,
+      deviceType,
+      userAgent: ua,
+      language: nav.language || '',
+      viewportWidth,
+      viewportHeight,
+      screenWidth,
+      screenHeight,
+      timezone
+    };
+  }
+
+  function logVideoGenerationEvent(eventType, extras) {
+    const payload = Object.assign(
+      {
+        eventType,
+        status: 'info',
+        format: 'linkedin',
+        preset: window.__VIDEO_RENDERER_PRESET || 'stable',
+        appVersion: 'web-1',
+        sessionId: generationSessionId
+      },
+      detectClientContext(),
+      extras || {}
+    );
+    return fetch('/api/logs/video-generation', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -166,11 +235,8 @@
   }
 
   function applyDynamicPreset() {
-    const memory = Number(navigator.deviceMemory || 0);
-    const cores = Number(navigator.hardwareConcurrency || 0);
-    const saveData = Boolean(navigator.connection && navigator.connection.saveData);
-    const lowEnd = saveData || (memory > 0 && memory <= 4) || (cores > 0 && cores <= 4);
-    window.__VIDEO_RENDERER_PRESET = lowEnd ? 'stable' : 'quality';
+    // Redes sociais: padroniza geração em 720p para reduzir peso e tempo de processamento.
+    window.__VIDEO_RENDERER_PRESET = 'stable';
     return window.__VIDEO_RENDERER_PRESET;
   }
 
@@ -291,10 +357,29 @@
     trackMetric('download-click', { format: DOWNLOAD_OUTPUT_FORMAT }).finally(async () => {
       try {
         downloadButton.textContent = 'Seu vídeo está sendo baixado';
+        logVideoGenerationEvent('convert_start', {
+          status: 'info',
+          webmSizeBytes: Number(lastRecordedBlob && lastRecordedBlob.size ? lastRecordedBlob.size : 0)
+        });
         const convertedBlob = await convertWebmToMp4(lastRecordedBlob);
+        if (Number(convertedBlob.size || 0) < MIN_VALID_MP4_BYTES) {
+          const actualSize = formatBytesToMb(convertedBlob.size);
+          const minSize = formatBytesToMb(MIN_VALID_MP4_BYTES);
+          throw new Error(
+            `Arquivo MP4 inválido para download: ${actualSize} MB. O tamanho mínimo esperado é ${minSize} MB.`
+          );
+        }
+        logVideoGenerationEvent('convert_success', {
+          status: 'success',
+          mp4SizeBytes: Number(convertedBlob && convertedBlob.size ? convertedBlob.size : 0)
+        });
         triggerBlobDownload(convertedBlob, 'video-somospartedogripen.mp4');
       } catch (error) {
         console.error('Falha na conversão para MP4:', error);
+        logVideoGenerationEvent('convert_error', {
+          status: 'error',
+          message: error && error.message ? error.message : 'Falha na conversão para MP4'
+        });
         alert(
           error && error.message
             ? error.message
@@ -316,6 +401,12 @@
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  }
+
+  function formatBytesToMb(bytes) {
+    const n = Number(bytes || 0);
+    if (!Number.isFinite(n) || n <= 0) return '0,00';
+    return (n / (1024 * 1024)).toFixed(2).replace('.', ',');
   }
 
   async function convertWebmToMp4(blob) {
@@ -532,6 +623,7 @@
 
         const format = 'linkedin';
         const activePreset = applyDynamicPreset();
+        generationSessionId = `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
         generationStartedAt = Date.now();
         checkpointLastSavedAt = 0;
         isGeneratingNow = true;
@@ -541,6 +633,7 @@
           'warning',
           `Para melhor performance, mantenha esta aba ativa durante a geração. Preset automático: ${activePreset}.`
         );
+        logVideoGenerationEvent('generate_start', { status: 'info', preset: activePreset });
 
         unlockMediaPlayback([videoPart1, audioTrack, videoPart2])
           .then(() =>
@@ -559,6 +652,12 @@
             })
           )
           .then(({ blob }) => {
+            const durationMs = Math.max(0, Date.now() - generationStartedAt);
+            logVideoGenerationEvent('generate_success', {
+              status: 'success',
+              webmSizeBytes: Number(blob && blob.size ? blob.size : 0),
+              durationMs
+            });
             lastRecordedBlob = blob;
             downloadUrl = URL.createObjectURL(blob);
 
@@ -595,6 +694,12 @@
           })
           .catch((err) => {
             console.error('Erro ao gerar vídeo:', err);
+            const durationMs = Math.max(0, Date.now() - generationStartedAt);
+            logVideoGenerationEvent('generate_error', {
+              status: 'error',
+              message: err && err.message ? err.message : 'erro desconhecido',
+              durationMs
+            });
             alert(
               `Não foi possível gerar o vídeo: ${err && err.message ? err.message : 'erro desconhecido'}`
             );
@@ -614,6 +719,10 @@
         if (window.VideoRenderer.isRecordingActive && window.VideoRenderer.isRecordingActive()) {
           window.VideoRenderer.pauseRecording();
           visibilityPauseActive = true;
+          logVideoGenerationEvent('generate_paused_hidden', {
+            status: 'warning',
+            message: 'Geração pausada por troca de aba'
+          });
           setGenerationNotice(
             'warning',
             'Geração pausada porque a aba ficou em segundo plano. Volte para esta aba para continuar.'
@@ -624,6 +733,10 @@
       if (visibilityPauseActive && window.VideoRenderer.isPaused && window.VideoRenderer.isPaused()) {
         window.VideoRenderer.resumeRecording();
         visibilityPauseActive = false;
+        logVideoGenerationEvent('generate_resumed_visible', {
+          status: 'info',
+          message: 'Geração retomada ao voltar para aba'
+        });
         setGenerationNotice(
           'info',
           'Geração retomada. Para evitar travamentos, mantenha esta aba visível até o final.'

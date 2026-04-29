@@ -29,6 +29,34 @@ function displayNameFromEmail(email) {
     .join(' ');
 }
 
+function normalizeLogString(value, maxLen) {
+  const s = String(value == null ? '' : value).trim();
+  if (!s) return null;
+  return s.slice(0, maxLen);
+}
+
+async function registerTokenSentLog(req, email) {
+  const userAgent = normalizeLogString(req.headers['user-agent'] || '', 4000);
+  const ipAddress = normalizeLogString(req.ip || '', 80);
+  const emailLower = String(email || '').trim().toLowerCase();
+  if (!emailLower) return;
+  await pool.query(
+    `INSERT INTO video_generation_logs (
+      user_id, email, company, event_type, status, message, user_agent, ip_address
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      null,
+      emailLower,
+      emailDomain(emailLower) || 'Corporativo',
+      'token_sent',
+      'success',
+      'Token enviado por e-mail (código de acesso).',
+      userAgent,
+      ipAddress
+    ]
+  );
+}
+
 async function establishSessionByEmail(req, normalizedEmail) {
   const [users] = await pool.query(
     'SELECT id, email, company, role, is_active FROM users WHERE email = ? LIMIT 1',
@@ -130,6 +158,12 @@ router.post('/login', async (req, res) => {
     } catch (mailErr) {
       console.error('Erro ao enviar e-mail de login:', mailErr);
       return res.redirect('/?error=4');
+    }
+
+    try {
+      await registerTokenSentLog(req, normalizedEmail);
+    } catch (logErr) {
+      console.error('Aviso: falha ao registrar log token_sent:', logErr);
     }
 
     return res.redirect(`/?sent=1&email=${encodeURIComponent(normalizedEmail)}`);
