@@ -93,6 +93,17 @@
           errorEl.textContent = messages[err];
           errorEl.hidden = false;
         }
+
+        if (formEl && submitBtn) {
+          formEl.addEventListener('submit', function () {
+            if (submitBtn.disabled) {
+              return;
+            }
+            submitBtn.disabled = true;
+            submitBtn.dataset.originalText = submitBtn.textContent || '';
+            submitBtn.textContent = sent === '1' ? 'Validando...' : 'Enviando...';
+          });
+        }
       })();
     </script>
   </body>
