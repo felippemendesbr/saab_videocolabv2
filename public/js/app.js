@@ -581,13 +581,14 @@
           webmSizeBytes: Number(lastRecordedBlob && lastRecordedBlob.size ? lastRecordedBlob.size : 0)
         });
         const convertedBlob = await convertWebmToMp4(lastRecordedBlob);
-        if (Number(convertedBlob.size || 0) < MIN_VALID_MP4_BYTES) {
-          const actualSize = formatBytesToMb(convertedBlob.size);
-          const minSize = formatBytesToMb(MIN_VALID_MP4_BYTES);
-          throw new Error(
-            `Arquivo MP4 inválido para download: ${actualSize} MB. O tamanho mínimo esperado é ${minSize} MB.`
-          );
-        }
+        // Validação temporariamente desativada a pedido: bloquear MP4 abaixo de 15MB.
+        // if (Number(convertedBlob.size || 0) < MIN_VALID_MP4_BYTES) {
+        //   const actualSize = formatBytesToMb(convertedBlob.size);
+        //   const minSize = formatBytesToMb(MIN_VALID_MP4_BYTES);
+        //   throw new Error(
+        //     `Arquivo MP4 inválido para download: ${actualSize} MB. O tamanho mínimo esperado é ${minSize} MB.`
+        //   );
+        // }
         logVideoGenerationEvent('convert_success', {
           status: 'success',
           mp4SizeBytes: Number(convertedBlob && convertedBlob.size ? convertedBlob.size : 0)
