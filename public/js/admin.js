@@ -295,6 +295,47 @@
     return `${(n / (1024 * 1024)).toFixed(2)} MB`;
   }
 
+  function escapeHtmlAttr(value) {
+    return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  function formatClientMetricsSummary(raw) {
+    if (!raw) return { short: '-', full: '' };
+    try {
+      const o = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      if (!o || typeof o !== 'object') return { short: '-', full: String(raw) };
+      const parts = [];
+      if (o.logicalProcessors != null) parts.push(`${o.logicalProcessors} núcleos`);
+      if (o.deviceRamEstimateGb != null) parts.push(`~${o.deviceRamEstimateGb}GB RAM`);
+      if (o.jsHeapUsedMb != null) parts.push(`heap JS ${o.jsHeapUsedMb}MB`);
+      if (o.networkEffectiveType) parts.push(String(o.networkEffectiveType));
+      if (o.networkDownlinkMbps != null) parts.push(`${o.networkDownlinkMbps}Mbps↓`);
+      if (o.documentVisibility) parts.push(o.documentVisibility);
+      if (o.longTaskCount > 0) {
+        parts.push(
+          `${o.longTaskCount} long task(s)`,
+          o.longTaskMaxMs != null ? `máx ${o.longTaskMaxMs}ms` : ''
+        );
+      } else if (o.longTasksSupported === true && o.longTaskCount === 0) {
+        parts.push('0 long tasks');
+      }
+      const short = parts.length ? parts.filter(Boolean).join(' · ') : '(sem métricas)';
+      let full = '';
+      try {
+        full = JSON.stringify(o);
+      } catch (e) {
+        full = String(raw);
+      }
+      return { short, full };
+    } catch (e) {
+      return { short: String(raw).slice(0, 96), full: String(raw) };
+    }
+  }
+
   function renderRecentDownloadsByCompany(rows) {
     if (!recentDownloadsByCompanyList) return;
     if (!rows || !rows.length) {
@@ -320,7 +361,7 @@
     const outputEl = targetListEl || videoGenerationLogsList || videoGenerationLogsListMenu;
     if (!outputEl) return;
     if (!rows || !rows.length) {
-      outputEl.innerHTML = '<tr><td colspan="7">Nenhum log encontrado.</td></tr>';
+      outputEl.innerHTML = '<tr><td colspan="8">Nenhum log encontrado.</td></tr>';
       return;
     }
     outputEl.innerHTML = rows
@@ -331,6 +372,9 @@
           : r.webm_size_bytes
             ? `WEBM: ${formatBytes(r.webm_size_bytes)}`
             : '-';
+        const m = formatClientMetricsSummary(r.client_metrics_json);
+        const tip =
+          m.full.length > 1800 ? `${m.full.slice(0, 1800)}…` : m.full;
         return `
           <tr>
             <td>${formatDateTime(r.created_at)}</td>
@@ -339,6 +383,7 @@
             <td>${r.status || '-'}</td>
             <td>${env}</td>
             <td>${size}</td>
+            <td title="${escapeHtmlAttr(tip)}">${escapeHtmlAttr(m.short)}</td>
             <td>${r.message || '-'}</td>
           </tr>
         `;

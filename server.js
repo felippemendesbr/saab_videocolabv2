@@ -154,6 +154,30 @@ function normalizeLogInt(value) {
   return Number.isFinite(n) ? Math.round(n) : null;
 }
 
+/** JSON serializado com limites de tamanho (métricas opcionais enviadas pelo cliente). */
+function normalizeClientMetricsJson(body) {
+  if (!body || typeof body !== 'object') return null;
+  const raw =
+    body.clientMetrics !== undefined && body.clientMetrics !== null
+      ? body.clientMetrics
+      : body.client_metrics;
+  if (raw == null) return null;
+  if (typeof raw === 'string') {
+    const t = String(raw).trim();
+    if (!t) return null;
+    return t.length > 8000 ? t.slice(0, 8000) : t;
+  }
+  if (typeof raw === 'object') {
+    try {
+      const s = JSON.stringify(raw);
+      return s.length > 8000 ? s.slice(0, 8000) : s;
+    } catch (e) {
+      return null;
+    }
+  }
+  return null;
+}
+
 function getVideoErrorAlertRecipient() {
   return String(process.env.VIDEO_ERROR_ALERT_EMAIL || 'suporte@noahsolutions.com.br')
     .trim()
@@ -205,6 +229,11 @@ async function notifyVideoErrorByEmail(payload) {
     formatAlertLine('IP', payload.ipAddress),
     formatAlertLine('Forwarded For', payload.forwardedFor),
     formatAlertLine('User-Agent', payload.userAgent),
+    '',
+    formatAlertLine(
+      'Recursos/métricas (cliente)',
+      payload.clientMetricsJson || '-'
+    ),
     '',
     'Payload bruto do evento:',
     payload.rawBody ? JSON.stringify(payload.rawBody, null, 2) : '-'
@@ -502,13 +531,15 @@ app.post('/api/logs/video-generation', ensureAuthenticated, ensureCollaborator, 
     const timezone = normalizeLogString(body.timezone, 80);
     const ipAddress = normalizeLogString(req.ip || '', 80);
     const forwardedFor = normalizeLogString(req.headers['x-forwarded-for'] || '', 512);
+    const clientMetricsJson = normalizeClientMetricsJson(body);
 
     await pool.query(
       `INSERT INTO video_generation_logs (
         user_id, email, company, event_type, status, message, browser, os, device_type,
         user_agent, app_version, preset, format, webm_size_bytes, mp4_size_bytes, duration_ms,
-        viewport_width, viewport_height, screen_width, screen_height, language, timezone, ip_address
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        viewport_width, viewport_height, screen_width, screen_height, language, timezone, ip_address,
+        client_metrics_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         req.session.userId || null,
         req.session.userEmail || null,
@@ -532,7 +563,8 @@ app.post('/api/logs/video-generation', ensureAuthenticated, ensureCollaborator, 
         screenHeight,
         language,
         timezone,
-        ipAddress
+        ipAddress,
+        clientMetricsJson
       ]
     );
 
@@ -564,6 +596,7 @@ app.post('/api/logs/video-generation', ensureAuthenticated, ensureCollaborator, 
           ipAddress,
           forwardedFor,
           userAgent,
+          clientMetricsJson,
           rawBody: body
         });
       } catch (mailErr) {
@@ -617,7 +650,8 @@ app.get('/api/admin/video-generation-logs', ensureAuthenticated, ensureAdmin, as
       `SELECT
         id, user_id, email, company, event_type, status, message, browser, os, device_type,
         app_version, preset, format, webm_size_bytes, mp4_size_bytes, duration_ms, viewport_width,
-        viewport_height, screen_width, screen_height, language, timezone, ip_address, created_at
+        viewport_height, screen_width, screen_height, language, timezone, ip_address,
+        client_metrics_json, created_at
        FROM video_generation_logs
        ${whereSql}
        ORDER BY id DESC

@@ -55,6 +55,8 @@
   let generationStartedAt = 0;
   let checkpointLastSavedAt = 0;
   let generationSessionId = null;
+  let longTaskObserver = null;
+  let longTaskStatsInternal = null;
   const LINKEDIN_SHARE_TEXT =
     `Fazer parte da história do primeiro Gripen produzido no Brasil é motivo de orgulho para todos que ajudam a construir esse marco todos os dias.\n\n` +
     `É também uma forma de registrar a contribuição individual de cada um que, com talento, dedicação e compromisso, faz parte dessa trajetória.\n\n` +
@@ -122,7 +124,160 @@
     };
   }
 
+  function round2(n) {
+    if (typeof n !== 'number' || !Number.isFinite(n)) return null;
+    return Math.round(n * 100) / 100;
+  }
+
+  /**
+   * Sinais de “pressão” de recursos que a Web API permite (não expõe CPU % global, RAM do SO nem nº de abas).
+   * @see https://developer.mozilla.org/en-US/docs/Web/API/Navigator/deviceMemory
+   */
+  function collectResourceHintsSync() {
+    const nav = window.navigator || {};
+    const hints = {
+      openTabsCount: null,
+      openTabsNote:
+        'Indisponível no navegador: por privacidade, sites não podem saber quantas abas estão abertas.'
+    };
+
+    if (typeof nav.hardwareConcurrency === 'number' && nav.hardwareConcurrency > 0) {
+      hints.logicalProcessors = nav.hardwareConcurrency;
+    }
+    if (typeof nav.deviceMemory === 'number' && nav.deviceMemory > 0) {
+      hints.deviceRamEstimateGb = nav.deviceMemory;
+    }
+
+    const perf = window.performance;
+    if (perf && perf.memory) {
+      hints.jsHeapUsedMb = round2(perf.memory.usedJSHeapSize / 1048576);
+      hints.jsHeapTotalMb = round2(perf.memory.totalJSHeapSize / 1048576);
+      hints.jsHeapLimitMb = round2(perf.memory.jsHeapSizeLimit / 1048576);
+    }
+
+    const conn = nav.connection || nav.mozConnection || nav.webkitConnection;
+    if (conn) {
+      if (conn.effectiveType) hints.networkEffectiveType = String(conn.effectiveType);
+      if (typeof conn.downlink === 'number') hints.networkDownlinkMbps = conn.downlink;
+      if (typeof conn.rtt === 'number') hints.networkRttMs = conn.rtt;
+      if (typeof conn.saveData === 'boolean') hints.networkSaveData = conn.saveData;
+    }
+
+    if (document.visibilityState) hints.documentVisibility = document.visibilityState;
+    if (typeof document.hidden === 'boolean') hints.pageHidden = document.hidden;
+    if (window.screen && typeof window.screen.colorDepth === 'number') {
+      hints.screenColorDepth = window.screen.colorDepth;
+    }
+    if (typeof window.devicePixelRatio === 'number' && window.devicePixelRatio > 0) {
+      hints.devicePixelRatio = window.devicePixelRatio;
+    }
+
+    return hints;
+  }
+
+  function enrichResourceHintsAsync(hints) {
+    const base = Object.assign({}, hints);
+    const nav = window.navigator;
+    return Promise.race([
+      (async () => {
+        try {
+          if (nav && nav.storage && nav.storage.estimate) {
+            const est = await nav.storage.estimate();
+            if (est && typeof est === 'object') {
+              if (est.quota != null) base.storageQuotaMb = round2(est.quota / 1048576);
+              if (est.usage != null) base.storageUsageMb = round2(est.usage / 1048576);
+            }
+          }
+        } catch (e) {}
+        return base;
+      })(),
+      new Promise((resolve) => {
+        setTimeout(() => resolve(base), 1500);
+      })
+    ]);
+  }
+
+  /**
+   * Tarefas JS > ~50ms (Long Tasks). Ajuda a correlacionar travamentos; Chrome/Edge costumam suportar.
+   */
+  function startLongTaskTracking() {
+    if (longTaskObserver) {
+      try {
+        longTaskObserver.disconnect();
+      } catch (e) {}
+      longTaskObserver = null;
+    }
+    longTaskStatsInternal = {
+      longTasksSupported: false,
+      longTaskCount: 0,
+      longTaskMaxMs: 0,
+      longTaskSumMs: 0
+    };
+    if (typeof PerformanceObserver === 'undefined') {
+      longTaskStatsInternal.longTasksNote =
+        'PerformanceObserver indisponível (long tasks não medidos).';
+      return;
+    }
+    try {
+      longTaskObserver = new PerformanceObserver((list) => {
+        const entries = list.getEntries();
+        for (let i = 0; i < entries.length; i++) {
+          const e = entries[i];
+          const d = typeof e.duration === 'number' ? e.duration : 0;
+          longTaskStatsInternal.longTaskCount += 1;
+          longTaskStatsInternal.longTaskSumMs += d;
+          if (d > longTaskStatsInternal.longTaskMaxMs) {
+            longTaskStatsInternal.longTaskMaxMs = d;
+          }
+        }
+      });
+      try {
+        longTaskObserver.observe({ type: 'longtask', buffered: true });
+      } catch (e1) {
+        longTaskObserver.observe({ entryTypes: ['longtask'] });
+      }
+      longTaskStatsInternal.longTasksSupported = true;
+    } catch (err) {
+      longTaskStatsInternal.longTasksNote =
+        'Long Tasks não suportadas neste navegador (use Chrome/Edge para métrica completa).';
+      longTaskObserver = null;
+    }
+  }
+
+  function stopLongTaskTracking() {
+    if (longTaskObserver) {
+      try {
+        longTaskObserver.disconnect();
+      } catch (e) {}
+      longTaskObserver = null;
+    }
+    const raw = longTaskStatsInternal;
+    longTaskStatsInternal = null;
+    if (!raw) {
+      return {
+        longTasksSupported: false,
+        longTaskCount: 0,
+        longTaskMaxMs: 0,
+        longTaskSumMs: 0,
+        longTasksNote: 'Medição de long tasks não estava ativa.'
+      };
+    }
+    const out = {
+      longTasksSupported: raw.longTasksSupported,
+      longTaskCount: raw.longTaskCount,
+      longTaskMaxMs: round2(raw.longTaskMaxMs),
+      longTaskSumMs: round2(raw.longTaskSumMs)
+    };
+    if (raw.longTasksNote) {
+      out.longTasksNote = raw.longTasksNote;
+    }
+    return out;
+  }
+
   function logVideoGenerationEvent(eventType, extras) {
+    const x = extras && typeof extras === 'object' ? extras : {};
+    const metricsOverlay =
+      x.clientMetrics && typeof x.clientMetrics === 'object' ? x.clientMetrics : {};
     const payload = Object.assign(
       {
         eventType,
@@ -133,15 +288,25 @@
         sessionId: generationSessionId
       },
       detectClientContext(),
-      extras || {}
+      x
     );
-    return fetch('/api/logs/video-generation', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    })
-      .then(() => {})
-      .catch(() => {});
+    payload.clientMetrics = Object.assign({}, collectResourceHintsSync(), metricsOverlay);
+
+    const send = (p) =>
+      fetch('/api/logs/video-generation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(p)
+      })
+        .then(() => {})
+        .catch(() => {});
+
+    return enrichResourceHintsAsync(payload.clientMetrics)
+      .then((hints) => {
+        payload.clientMetrics = hints;
+        return send(payload);
+      })
+      .catch(() => send(payload));
   }
 
   function formatCollaboratorNameFromEmail(email) {
@@ -680,6 +845,7 @@
         generationSessionId = `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
         generationStartedAt = Date.now();
         checkpointLastSavedAt = 0;
+        startLongTaskTracking();
         isGeneratingNow = true;
         visibilityPauseActive = false;
         clearGenerationCheckpoint();
@@ -707,10 +873,12 @@
           )
           .then(({ blob }) => {
             const durationMs = Math.max(0, Date.now() - generationStartedAt);
+            const ltMetrics = stopLongTaskTracking();
             logVideoGenerationEvent('generate_success', {
               status: 'success',
               webmSizeBytes: Number(blob && blob.size ? blob.size : 0),
-              durationMs
+              durationMs,
+              clientMetrics: ltMetrics || {}
             });
             lastRecordedBlob = blob;
             downloadUrl = URL.createObjectURL(blob);
@@ -749,10 +917,12 @@
           .catch((err) => {
             console.error('Erro ao gerar vídeo:', err);
             const durationMs = Math.max(0, Date.now() - generationStartedAt);
+            const ltMetrics = stopLongTaskTracking();
             logVideoGenerationEvent('generate_error', {
               status: 'error',
               message: err && err.message ? err.message : 'erro desconhecido',
-              durationMs
+              durationMs,
+              clientMetrics: ltMetrics || {}
             });
             alert(
               `Não foi possível gerar o vídeo: ${err && err.message ? err.message : 'erro desconhecido'}`

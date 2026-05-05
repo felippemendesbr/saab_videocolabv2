@@ -184,6 +184,17 @@ async function initDatabase() {
     )
   `);
 
+  try {
+    await pool.query(
+      'ALTER TABLE video_generation_logs ADD COLUMN client_metrics_json TEXT NULL'
+    );
+  } catch (e) {
+    console.warn(
+      'video_generation_logs.client_metrics_json (ignorar se coluna já existe):',
+      e.message
+    );
+  }
+
   const [[domainCount]] = await pool.query(
     'SELECT COUNT(*) AS c FROM allowed_email_domains'
   );
