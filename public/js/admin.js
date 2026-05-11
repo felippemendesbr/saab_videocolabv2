@@ -843,7 +843,7 @@
     if (!collaboratorSuccessesList) return;
     if (!rows || !rows.length) {
       collaboratorSuccessesList.innerHTML =
-        '<tr><td colspan="10">Nenhum colaborador concluiu o processo no período.</td></tr>';
+        '<tr><td colspan="8">Nenhum colaborador concluiu o processo no período.</td></tr>';
       return;
     }
     collaboratorSuccessesList.innerHTML = rows
@@ -860,8 +860,6 @@
           <tr>
             <td>${escapeHtmlAttr(r.email || '-')}</td>
             <td>${escapeHtmlAttr(r.company || '-')}</td>
-            <td>${Number(r.tokens_count || 0)}</td>
-            <td>${Number(r.generate_success_count || 0)}</td>
             <td>${Number(r.convert_success_count || 0)}</td>
             <td>${formatDateTime(r.first_convert_success_at)}</td>
             <td>${formatDateTime(r.last_convert_success_at)}</td>

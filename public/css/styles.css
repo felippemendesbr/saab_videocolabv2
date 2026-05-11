@@ -921,6 +921,25 @@ html:has(body.vc-login-page) {
   display: block;
 }
 
+.vc-table-compact {
+  min-width: auto;
+  table-layout: auto;
+  font-size: 0.82rem;
+}
+
+.vc-table-compact thead th {
+  font-size: 0.75rem;
+  padding: 0.5rem 0.5rem;
+}
+
+.vc-table-compact tbody td {
+  padding: 0.5rem 0.5rem;
+  font-size: 0.82rem;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
 .vc-pagination-row {
   display: flex;
   justify-content: space-between;
