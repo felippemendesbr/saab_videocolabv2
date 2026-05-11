@@ -71,6 +71,12 @@
           </svg>
           <span>Falhas (erro/conversão)</span>
         </button>
+        <button class="vc-sidebar-item" data-tab="collaborator-successes">
+          <svg class="vc-menu-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M20 6L9 17l-5-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span>Sucessos (MP4 concluído)</span>
+        </button>
       </aside>
 
       <section class="vc-admin-content">
@@ -527,6 +533,14 @@
                   <tbody id="collaborator-journeys-list"></tbody>
                 </table>
               </div>
+              <div class="vc-pagination-row">
+                <span class="vc-page-size-label">20 registros por página</span>
+                <div class="vc-pagination-actions">
+                  <button id="journeys-page-prev" class="vc-button vc-crud-ghost" type="button" title="Página anterior">‹</button>
+                  <span id="journeys-page-info" class="vc-helper-text">Página 1 de 1</span>
+                  <button id="journeys-page-next" class="vc-button vc-crud-ghost" type="button" title="Próxima página">›</button>
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -562,6 +576,61 @@
                   </thead>
                   <tbody id="collaborator-errors-list"></tbody>
                 </table>
+              </div>
+              <div class="vc-pagination-row">
+                <span class="vc-page-size-label">20 registros por página</span>
+                <div class="vc-pagination-actions">
+                  <button id="errors-page-prev" class="vc-button vc-crud-ghost" type="button" title="Página anterior">‹</button>
+                  <span id="errors-page-info" class="vc-helper-text">Página 1 de 1</span>
+                  <button id="errors-page-next" class="vc-button vc-crud-ghost" type="button" title="Próxima página">›</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="vc-card vc-tab-panel vc-hidden" data-panel="collaborator-successes">
+          <div class="vc-dashboard-panel vc-dashboard-table-panel">
+            <h3 class="vc-dashboard-panel-title">Colaboradores que concluíram com sucesso (MP4)</h3>
+            <p class="vc-card-subtitle">
+              Lista os e-mails que registraram pelo menos um convert_success (download do MP4 efetuado).
+            </p>
+            <div class="vc-dashboard-panel-body">
+              <div class="vc-crud-filters">
+                <p class="vc-section-label">Filtros</p>
+                <div class="vc-crud-form" style="grid-template-columns: 0.8fr 0.8fr auto auto;">
+                  <input type="date" id="successes-filter-from" class="vc-input" />
+                  <input type="date" id="successes-filter-to" class="vc-input" />
+                  <button id="successes-apply" class="vc-button vc-crud-ghost" type="button">Aplicar</button>
+                  <button id="successes-export-xls" class="vc-button vc-crud-ghost" type="button">Exportar Excel</button>
+                </div>
+              </div>
+              <div class="vc-table-wrapper">
+                <table class="vc-crud-table vc-zebra-table">
+                  <thead>
+                    <tr>
+                      <th>E-mail</th>
+                      <th>Empresa</th>
+                      <th>Tokens</th>
+                      <th>WEBM gerado</th>
+                      <th>MP4 concluído</th>
+                      <th>Primeiro MP4</th>
+                      <th>Último MP4</th>
+                      <th>Tamanho último MP4</th>
+                      <th>Última duração</th>
+                      <th>Navegador / SO</th>
+                    </tr>
+                  </thead>
+                  <tbody id="collaborator-successes-list"></tbody>
+                </table>
+              </div>
+              <div class="vc-pagination-row">
+                <span class="vc-page-size-label">20 registros por página</span>
+                <div class="vc-pagination-actions">
+                  <button id="successes-page-prev" class="vc-button vc-crud-ghost" type="button" title="Página anterior">‹</button>
+                  <span id="successes-page-info" class="vc-helper-text">Página 1 de 1</span>
+                  <button id="successes-page-next" class="vc-button vc-crud-ghost" type="button" title="Próxima página">›</button>
+                </div>
               </div>
             </div>
           </div>
@@ -601,6 +670,14 @@
                   </thead>
                   <tbody id="abandoned-tokens-list"></tbody>
                 </table>
+              </div>
+              <div class="vc-pagination-row">
+                <span class="vc-page-size-label">20 registros por página</span>
+                <div class="vc-pagination-actions">
+                  <button id="abandoned-tokens-page-prev" class="vc-button vc-crud-ghost" type="button" title="Página anterior">‹</button>
+                  <span id="abandoned-tokens-page-info" class="vc-helper-text">Página 1 de 1</span>
+                  <button id="abandoned-tokens-page-next" class="vc-button vc-crud-ghost" type="button" title="Próxima página">›</button>
+                </div>
               </div>
             </div>
           </div>

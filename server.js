@@ -612,6 +612,102 @@ app.post('/api/logs/video-generation', ensureAuthenticated, ensureCollaborator, 
 });
 
 /**
+ * Colaboradores cujo processo finalizou com sucesso (pelo menos um convert_success).
+ * Retorna agregado por e-mail com contagens e primeiras/últimas datas.
+ */
+app.get('/api/admin/collaborator-successes', ensureAuthenticated, ensureAdmin, async (req, res) => {
+  try {
+    const from = String(req.query.from || '').trim();
+    const to = String(req.query.to || '').trim();
+    const limitRaw = Number(req.query.limit || 2000);
+    const limit = Math.max(1, Math.min(5000, Number.isFinite(limitRaw) ? limitRaw : 2000));
+
+    const where = [
+      "event_type IN ('token_sent','generate_success','convert_success')",
+      'email IS NOT NULL'
+    ];
+    const params = [];
+    if (from) {
+      where.push('created_at >= ?');
+      params.push(`${from} 00:00:00`);
+    }
+    if (to) {
+      where.push('created_at <= ?');
+      params.push(`${to} 23:59:59`);
+    }
+    const whereSql = `WHERE ${where.join(' AND ')}`;
+
+    const [stats] = await pool.query(
+      `SELECT email,
+              SUM(CASE WHEN event_type='convert_success' THEN 1 ELSE 0 END) AS convert_success_count,
+              MIN(CASE WHEN event_type='convert_success' THEN created_at END) AS first_convert_success_at,
+              MAX(CASE WHEN event_type='convert_success' THEN created_at END) AS last_convert_success_at,
+              SUM(CASE WHEN event_type='generate_success' THEN 1 ELSE 0 END) AS generate_success_count,
+              SUM(CASE WHEN event_type='token_sent' THEN 1 ELSE 0 END) AS tokens_count
+       FROM video_generation_logs
+       ${whereSql}
+       GROUP BY email
+       HAVING convert_success_count > 0
+       ORDER BY last_convert_success_at DESC
+       LIMIT ?`,
+      [...params, limit]
+    );
+
+    const lastWhere = [
+      "v.event_type = 'convert_success'",
+      'v.email IS NOT NULL'
+    ];
+    const lastParams = [];
+    if (from) {
+      lastWhere.push('v.created_at >= ?');
+      lastParams.push(`${from} 00:00:00`);
+    }
+    if (to) {
+      lastWhere.push('v.created_at <= ?');
+      lastParams.push(`${to} 23:59:59`);
+    }
+    const innerWhere = [
+      "event_type = 'convert_success'",
+      'email IS NOT NULL'
+    ];
+    if (from) innerWhere.push(`created_at >= '${from} 00:00:00'`);
+    if (to) innerWhere.push(`created_at <= '${to} 23:59:59'`);
+    const innerWhereSql = `WHERE ${innerWhere.join(' AND ')}`;
+
+    const [latest] = await pool.query(
+      `SELECT v.email, v.company, v.browser, v.os, v.device_type,
+              v.mp4_size_bytes, v.duration_ms, v.created_at AS last_at
+       FROM video_generation_logs v
+       INNER JOIN (
+         SELECT email, MAX(id) AS max_id
+         FROM video_generation_logs
+         ${innerWhereSql}
+         GROUP BY email
+       ) m ON m.max_id = v.id`
+    );
+
+    const lookup = new Map(latest.map((r) => [r.email, r]));
+    const rows = stats.map((s) => {
+      const m = lookup.get(s.email) || {};
+      return {
+        ...s,
+        company: m.company || null,
+        last_browser: m.browser || null,
+        last_os: m.os || null,
+        last_device_type: m.device_type || null,
+        last_mp4_size_bytes: m.mp4_size_bytes != null ? Number(m.mp4_size_bytes) : null,
+        last_duration_ms: m.duration_ms != null ? Number(m.duration_ms) : null
+      };
+    });
+
+    res.json({ successes: rows });
+  } catch (error) {
+    console.error('Erro ao listar colaboradores com sucesso:', error);
+    res.status(500).json({ error: 'Falha ao listar colaboradores com sucesso.' });
+  }
+});
+
+/**
  * Jornadas de colaboradores: para cada e-mail que recebeu um código (token_sent),
  * indica se o processo chegou ao final com convert_success (MP4 baixado).
  */

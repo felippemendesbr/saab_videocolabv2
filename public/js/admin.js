@@ -103,12 +103,103 @@
   const errorsFilterTo = document.getElementById('errors-filter-to');
   const errorsApplyBtn = document.getElementById('errors-apply');
   const errorsExportBtn = document.getElementById('errors-export-xls');
+  const collaboratorSuccessesList = document.getElementById('collaborator-successes-list');
+  const successesFilterFrom = document.getElementById('successes-filter-from');
+  const successesFilterTo = document.getElementById('successes-filter-to');
+  const successesApplyBtn = document.getElementById('successes-apply');
+  const successesExportBtn = document.getElementById('successes-export-xls');
+  const REPORT_PAGE_SIZE = 20;
+  const reportPagers = {
+    journeys: {
+      page: 1,
+      get rows() {
+        return lastLoadedJourneysFiltered;
+      },
+      render: (rows) => renderCollaboratorJourneys(rows),
+      info: document.getElementById('journeys-page-info'),
+      prevBtn: document.getElementById('journeys-page-prev'),
+      nextBtn: document.getElementById('journeys-page-next')
+    },
+    errors: {
+      page: 1,
+      get rows() {
+        return lastLoadedErrors;
+      },
+      render: (rows) => renderCollaboratorErrors(rows),
+      info: document.getElementById('errors-page-info'),
+      prevBtn: document.getElementById('errors-page-prev'),
+      nextBtn: document.getElementById('errors-page-next')
+    },
+    successes: {
+      page: 1,
+      get rows() {
+        return lastLoadedSuccesses;
+      },
+      render: (rows) => renderCollaboratorSuccesses(rows),
+      info: document.getElementById('successes-page-info'),
+      prevBtn: document.getElementById('successes-page-prev'),
+      nextBtn: document.getElementById('successes-page-next')
+    },
+    abandonedTokens: {
+      page: 1,
+      get rows() {
+        return lastLoadedAbandonedTokens;
+      },
+      render: (rows) => renderAbandonedTokens(rows),
+      info: document.getElementById('abandoned-tokens-page-info'),
+      prevBtn: document.getElementById('abandoned-tokens-page-prev'),
+      nextBtn: document.getElementById('abandoned-tokens-page-next')
+    }
+  };
   let lastLoadedVideoLogs = [];
   let lastLoadedVideoLogsMenu = [];
   let lastLoadedAbandonedTokens = [];
   let lastLoadedJourneys = [];
   let lastLoadedJourneysFiltered = [];
   let lastLoadedErrors = [];
+  let lastLoadedSuccesses = [];
+
+  function renderReportPage(name, opts) {
+    const pager = reportPagers[name];
+    if (!pager) return;
+    const total = pager.rows.length;
+    const totalPages = Math.max(1, Math.ceil(total / REPORT_PAGE_SIZE));
+    if (opts && opts.reset) pager.page = 1;
+    if (pager.page > totalPages) pager.page = totalPages;
+    if (pager.page < 1) pager.page = 1;
+    const start = (pager.page - 1) * REPORT_PAGE_SIZE;
+    const slice = pager.rows.slice(start, start + REPORT_PAGE_SIZE);
+    pager.render(slice);
+    if (pager.info) {
+      pager.info.textContent = total
+        ? `Página ${pager.page} de ${totalPages} · ${total} registros`
+        : 'Página 1 de 1';
+    }
+    if (pager.prevBtn) pager.prevBtn.disabled = pager.page <= 1;
+    if (pager.nextBtn) pager.nextBtn.disabled = pager.page >= totalPages;
+  }
+
+  function setupReportPager(name) {
+    const pager = reportPagers[name];
+    if (!pager) return;
+    if (pager.prevBtn) {
+      pager.prevBtn.addEventListener('click', () => {
+        if (pager.page > 1) {
+          pager.page -= 1;
+          renderReportPage(name);
+        }
+      });
+    }
+    if (pager.nextBtn) {
+      pager.nextBtn.addEventListener('click', () => {
+        const totalPages = Math.max(1, Math.ceil(pager.rows.length / REPORT_PAGE_SIZE));
+        if (pager.page < totalPages) {
+          pager.page += 1;
+          renderReportPage(name);
+        }
+      });
+    }
+  }
   const collabFormCancelBtn = document.getElementById('collaborators-cancel-new');
   const usersListControls = document.getElementById('users-list-controls');
   const collaboratorsListControls = document.getElementById('collaborators-list-controls');
@@ -563,11 +654,11 @@
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Falha ao carregar tokens não concluídos');
       lastLoadedAbandonedTokens = data.tokens || [];
-      renderAbandonedTokens(lastLoadedAbandonedTokens);
+      renderReportPage('abandonedTokens', { reset: true });
     } catch (error) {
       console.error('Erro ao carregar tokens não concluídos:', error);
       lastLoadedAbandonedTokens = [];
-      renderAbandonedTokens([]);
+      renderReportPage('abandonedTokens', { reset: true });
     }
   }
 
@@ -625,12 +716,12 @@
       lastLoadedJourneys = data.journeys || [];
       const status = (journeysFilterStatus && journeysFilterStatus.value) || 'all';
       lastLoadedJourneysFiltered = applyJourneyStatusFilter(lastLoadedJourneys, status);
-      renderCollaboratorJourneys(lastLoadedJourneysFiltered);
+      renderReportPage('journeys', { reset: true });
     } catch (error) {
       console.error('Erro ao carregar jornadas:', error);
       lastLoadedJourneys = [];
       lastLoadedJourneysFiltered = [];
-      renderCollaboratorJourneys([]);
+      renderReportPage('journeys', { reset: true });
     }
   }
 
@@ -707,11 +798,11 @@
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Falha ao carregar falhas');
       lastLoadedErrors = data.errors || [];
-      renderCollaboratorErrors(lastLoadedErrors);
+      renderReportPage('errors', { reset: true });
     } catch (error) {
       console.error('Erro ao carregar falhas dos colaboradores:', error);
       lastLoadedErrors = [];
-      renderCollaboratorErrors([]);
+      renderReportPage('errors', { reset: true });
     }
   }
 
@@ -745,6 +836,103 @@
         { key: 'last_message', label: 'Mensagem (última)' }
       ],
       `falhas-colaboradores-${today}.xls`
+    );
+  }
+
+  function renderCollaboratorSuccesses(rows) {
+    if (!collaboratorSuccessesList) return;
+    if (!rows || !rows.length) {
+      collaboratorSuccessesList.innerHTML =
+        '<tr><td colspan="10">Nenhum colaborador concluiu o processo no período.</td></tr>';
+      return;
+    }
+    collaboratorSuccessesList.innerHTML = rows
+      .map((r) => {
+        const env = [r.last_browser || '-', r.last_os || '-'].join(' / ');
+        const size = r.last_mp4_size_bytes
+          ? formatBytes(r.last_mp4_size_bytes)
+          : '-';
+        const dur =
+          r.last_duration_ms != null && Number.isFinite(Number(r.last_duration_ms))
+            ? `${(Number(r.last_duration_ms) / 1000).toFixed(1)} s`
+            : '-';
+        return `
+          <tr>
+            <td>${escapeHtmlAttr(r.email || '-')}</td>
+            <td>${escapeHtmlAttr(r.company || '-')}</td>
+            <td>${Number(r.tokens_count || 0)}</td>
+            <td>${Number(r.generate_success_count || 0)}</td>
+            <td>${Number(r.convert_success_count || 0)}</td>
+            <td>${formatDateTime(r.first_convert_success_at)}</td>
+            <td>${formatDateTime(r.last_convert_success_at)}</td>
+            <td>${size}</td>
+            <td>${dur}</td>
+            <td>${escapeHtmlAttr(env)}</td>
+          </tr>
+        `;
+      })
+      .join('');
+  }
+
+  async function loadCollaboratorSuccesses() {
+    if (!collaboratorSuccessesList) return;
+    try {
+      const params = new URLSearchParams();
+      const from = (successesFilterFrom && successesFilterFrom.value) || '';
+      const to = (successesFilterTo && successesFilterTo.value) || '';
+      if (from) params.set('from', from);
+      if (to) params.set('to', to);
+      params.set('limit', '2000');
+      const res = await fetch(`/api/admin/collaborator-successes?${params.toString()}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Falha ao carregar colaboradores com sucesso');
+      lastLoadedSuccesses = data.successes || [];
+      renderReportPage('successes', { reset: true });
+    } catch (error) {
+      console.error('Erro ao carregar colaboradores com sucesso:', error);
+      lastLoadedSuccesses = [];
+      renderReportPage('successes', { reset: true });
+    }
+  }
+
+  function exportSuccessesToExcel() {
+    if (!lastLoadedSuccesses.length) {
+      alert('Nenhum dado carregado para exportar. Aplique os filtros primeiro.');
+      return;
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    exportToXls(
+      lastLoadedSuccesses.map((r) => ({
+        email: r.email || '',
+        company: r.company || '',
+        tokens_count: Number(r.tokens_count || 0),
+        generate_success_count: Number(r.generate_success_count || 0),
+        convert_success_count: Number(r.convert_success_count || 0),
+        first_convert_success_at: formatDateTime(r.first_convert_success_at),
+        last_convert_success_at: formatDateTime(r.last_convert_success_at),
+        last_mp4_size_mb: r.last_mp4_size_bytes
+          ? (Number(r.last_mp4_size_bytes) / (1024 * 1024)).toFixed(2)
+          : '',
+        last_duration_ms: r.last_duration_ms || '',
+        last_browser: r.last_browser || '',
+        last_os: r.last_os || '',
+        last_device_type: r.last_device_type || ''
+      })),
+      [
+        { key: 'email', label: 'E-mail' },
+        { key: 'company', label: 'Empresa' },
+        { key: 'tokens_count', label: 'Tokens enviados' },
+        { key: 'generate_success_count', label: 'WEBM gerado' },
+        { key: 'convert_success_count', label: 'MP4 concluído' },
+        { key: 'first_convert_success_at', label: 'Primeiro MP4' },
+        { key: 'last_convert_success_at', label: 'Último MP4' },
+        { key: 'last_mp4_size_mb', label: 'Tamanho último MP4 (MB)' },
+        { key: 'last_duration_ms', label: 'Duração última (ms)' },
+        { key: 'last_browser', label: 'Navegador (última)' },
+        { key: 'last_os', label: 'SO (última)' },
+        { key: 'last_device_type', label: 'Dispositivo (última)' }
+      ],
+      `colaboradores-sucesso-${today}.xls`
     );
   }
 
@@ -998,6 +1186,9 @@
     }
     if (tab === 'collaborator-errors') {
       loadCollaboratorErrors();
+    }
+    if (tab === 'collaborator-successes') {
+      loadCollaboratorSuccesses();
     }
   }
 
@@ -1399,7 +1590,7 @@
     journeysFilterStatus.addEventListener('change', () => {
       const status = journeysFilterStatus.value || 'all';
       lastLoadedJourneysFiltered = applyJourneyStatusFilter(lastLoadedJourneys, status);
-      renderCollaboratorJourneys(lastLoadedJourneysFiltered);
+      renderReportPage('journeys', { reset: true });
     });
   }
   if (journeysExportBtn) {
@@ -1411,6 +1602,16 @@
   if (errorsExportBtn) {
     errorsExportBtn.addEventListener('click', () => exportErrorsToExcel());
   }
+  if (successesApplyBtn) {
+    successesApplyBtn.addEventListener('click', () => loadCollaboratorSuccesses());
+  }
+  if (successesExportBtn) {
+    successesExportBtn.addEventListener('click', () => exportSuccessesToExcel());
+  }
+  setupReportPager('journeys');
+  setupReportPager('errors');
+  setupReportPager('successes');
+  setupReportPager('abandonedTokens');
 
   if (collabFormCancelBtn) {
     collabFormCancelBtn.addEventListener('click', () => setCollaboratorsView('list'));
