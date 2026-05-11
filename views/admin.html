@@ -53,6 +53,12 @@
           </svg>
           <span>Logs de Geração</span>
         </button>
+        <button class="vc-sidebar-item" data-tab="abandoned-tokens">
+          <svg class="vc-menu-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 8v5l3 2M21 12a9 9 0 11-18 0 9 9 0 0118 0z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span>Tokens não concluídos</span>
+        </button>
       </aside>
 
       <section class="vc-admin-content">
@@ -204,6 +210,7 @@
                   <input type="date" id="video-log-filter-from" class="vc-input" />
                   <input type="date" id="video-log-filter-to" class="vc-input" />
                   <button id="video-log-filter-apply" class="vc-button vc-crud-ghost" type="button">Aplicar</button>
+                  <button id="video-log-export-xls" class="vc-button vc-crud-ghost" type="button">Exportar Excel</button>
                 </div>
               </div>
               <div class="vc-table-wrapper">
@@ -446,6 +453,7 @@
                   <input type="date" id="video-log-filter-from-menu" class="vc-input" />
                   <input type="date" id="video-log-filter-to-menu" class="vc-input" />
                   <button id="video-log-filter-apply-menu" class="vc-button vc-crud-ghost" type="button">Aplicar</button>
+                  <button id="video-log-export-xls-menu" class="vc-button vc-crud-ghost" type="button">Exportar Excel</button>
                 </div>
               </div>
               <div class="vc-table-wrapper">
@@ -463,6 +471,45 @@
                     </tr>
                   </thead>
                   <tbody id="video-generation-logs-list-menu"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="vc-card vc-tab-panel vc-hidden" data-panel="abandoned-tokens">
+          <div class="vc-dashboard-panel vc-dashboard-table-panel">
+            <h3 class="vc-dashboard-panel-title">Tokens enviados sem login concluído</h3>
+            <p class="vc-card-subtitle">
+              Lista os usuários que receberam o código de acesso por e-mail, mas não completaram a entrada antes de expirar. O token tem validade de 30 minutos.
+            </p>
+            <div class="vc-dashboard-panel-body">
+              <div class="vc-crud-filters">
+                <p class="vc-section-label">Filtros</p>
+                <div class="vc-crud-form" style="grid-template-columns: 1fr 0.8fr 0.8fr auto auto;">
+                  <select id="abandoned-tokens-filter-status" class="vc-input">
+                    <option value="all">Todos (pendentes + expirados)</option>
+                    <option value="pending">Pendentes (ainda válidos)</option>
+                    <option value="expired" selected>Expirados sem uso</option>
+                  </select>
+                  <input type="date" id="abandoned-tokens-filter-from" class="vc-input" />
+                  <input type="date" id="abandoned-tokens-filter-to" class="vc-input" />
+                  <button id="abandoned-tokens-apply" class="vc-button vc-crud-ghost" type="button">Aplicar</button>
+                  <button id="abandoned-tokens-export-xls" class="vc-button vc-crud-ghost" type="button">Exportar Excel</button>
+                </div>
+              </div>
+              <div class="vc-table-wrapper">
+                <table class="vc-crud-table vc-zebra-table">
+                  <thead>
+                    <tr>
+                      <th>E-mail</th>
+                      <th>Tipo</th>
+                      <th>Enviado em</th>
+                      <th>Expira em</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody id="abandoned-tokens-list"></tbody>
                 </table>
               </div>
             </div>

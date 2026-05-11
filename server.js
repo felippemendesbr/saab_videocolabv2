@@ -611,6 +611,60 @@ app.post('/api/logs/video-generation', ensureAuthenticated, ensureCollaborator, 
   }
 });
 
+/**
+ * Tokens de acesso enviados por e-mail que ainda não foram consumidos (login não concluído).
+ * - status=pending: dentro do prazo de validade
+ * - status=expired: prazo de validade vencido sem uso
+ * Considera apenas o token MAIS RECENTE por e-mail, no período filtrado.
+ */
+app.get('/api/admin/abandoned-tokens', ensureAuthenticated, ensureAdmin, async (req, res) => {
+  try {
+    const status = String(req.query.status || 'all').trim().toLowerCase();
+    const from = String(req.query.from || '').trim();
+    const to = String(req.query.to || '').trim();
+    const limitRaw = Number(req.query.limit || 500);
+    const limit = Math.max(1, Math.min(1000, Number.isFinite(limitRaw) ? limitRaw : 500));
+
+    const innerWhere = [];
+    const innerParams = [];
+    if (from) {
+      innerWhere.push('created_at >= ?');
+      innerParams.push(`${from} 00:00:00`);
+    }
+    if (to) {
+      innerWhere.push('created_at <= ?');
+      innerParams.push(`${to} 23:59:59`);
+    }
+    const innerSql = innerWhere.length ? `WHERE ${innerWhere.join(' AND ')}` : '';
+
+    const outerWhere = ['t.used_at IS NULL'];
+    if (status === 'pending') outerWhere.push('t.expires_at >= NOW()');
+    if (status === 'expired') outerWhere.push('t.expires_at < NOW()');
+    const outerSql = outerWhere.length ? `WHERE ${outerWhere.join(' AND ')}` : '';
+
+    const [rows] = await pool.query(
+      `SELECT t.id, t.email, t.account_type, t.created_at, t.expires_at, t.used_at,
+              CASE WHEN t.expires_at < NOW() THEN 'expired' ELSE 'pending' END AS status
+       FROM magic_login_tokens t
+       INNER JOIN (
+         SELECT email, MAX(id) AS max_id
+         FROM magic_login_tokens
+         ${innerSql}
+         GROUP BY email
+       ) latest ON latest.max_id = t.id
+       ${outerSql}
+       ORDER BY t.created_at DESC
+       LIMIT ?`,
+      [...innerParams, limit]
+    );
+
+    res.json({ tokens: rows });
+  } catch (error) {
+    console.error('Erro ao listar tokens não concluídos:', error);
+    res.status(500).json({ error: 'Falha ao listar tokens não concluídos.' });
+  }
+});
+
 app.get('/api/admin/video-generation-logs', ensureAuthenticated, ensureAdmin, async (req, res) => {
   try {
     const email = String(req.query.email || '').trim().toLowerCase();

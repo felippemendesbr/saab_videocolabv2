@@ -84,6 +84,17 @@
   const videoLogFilterToMenu = document.getElementById('video-log-filter-to-menu');
   const videoLogFilterApply = document.getElementById('video-log-filter-apply');
   const videoLogFilterApplyMenu = document.getElementById('video-log-filter-apply-menu');
+  const videoLogExportXls = document.getElementById('video-log-export-xls');
+  const videoLogExportXlsMenu = document.getElementById('video-log-export-xls-menu');
+  const abandonedTokensList = document.getElementById('abandoned-tokens-list');
+  const abandonedTokensFilterStatus = document.getElementById('abandoned-tokens-filter-status');
+  const abandonedTokensFilterFrom = document.getElementById('abandoned-tokens-filter-from');
+  const abandonedTokensFilterTo = document.getElementById('abandoned-tokens-filter-to');
+  const abandonedTokensApplyBtn = document.getElementById('abandoned-tokens-apply');
+  const abandonedTokensExportBtn = document.getElementById('abandoned-tokens-export-xls');
+  let lastLoadedVideoLogs = [];
+  let lastLoadedVideoLogsMenu = [];
+  let lastLoadedAbandonedTokens = [];
   const collabFormCancelBtn = document.getElementById('collaborators-cancel-new');
   const usersListControls = document.getElementById('users-list-controls');
   const collaboratorsListControls = document.getElementById('collaborators-list-controls');
@@ -428,11 +439,147 @@
       const res = await fetch(`/api/admin/video-generation-logs?${params.toString()}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Falha ao carregar logs de geração');
-      renderVideoGenerationLogs(data.logs || [], outputEl);
+      const logs = data.logs || [];
+      if (usingMenu) {
+        lastLoadedVideoLogsMenu = logs;
+      } else {
+        lastLoadedVideoLogs = logs;
+      }
+      renderVideoGenerationLogs(logs, outputEl);
     } catch (error) {
       console.error('Erro ao carregar logs de geração:', error);
+      if (usingMenu) {
+        lastLoadedVideoLogsMenu = [];
+      } else {
+        lastLoadedVideoLogs = [];
+      }
       renderVideoGenerationLogs([], outputEl);
     }
+  }
+
+  function exportVideoLogsToExcel(rows) {
+    if (!rows || !rows.length) {
+      alert('Nenhum log carregado para exportar. Aplique os filtros primeiro.');
+      return;
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    exportToXls(
+      rows.map((r) => ({
+        created_at: formatDateTime(r.created_at),
+        email: r.email || '',
+        event_type: r.event_type || '',
+        status: r.status || '',
+        browser: r.browser || '',
+        os: r.os || '',
+        device_type: r.device_type || '',
+        preset: r.preset || '',
+        webm_size_mb: r.webm_size_bytes
+          ? (Number(r.webm_size_bytes) / (1024 * 1024)).toFixed(2)
+          : '',
+        mp4_size_mb: r.mp4_size_bytes
+          ? (Number(r.mp4_size_bytes) / (1024 * 1024)).toFixed(2)
+          : '',
+        duration_ms: r.duration_ms || '',
+        viewport: `${r.viewport_width || '-'}x${r.viewport_height || '-'}`,
+        screen: `${r.screen_width || '-'}x${r.screen_height || '-'}`,
+        language: r.language || '',
+        timezone: r.timezone || '',
+        ip_address: r.ip_address || '',
+        client_metrics_json: r.client_metrics_json || '',
+        message: r.message || ''
+      })),
+      [
+        { key: 'created_at', label: 'Data/Hora' },
+        { key: 'email', label: 'E-mail' },
+        { key: 'event_type', label: 'Evento' },
+        { key: 'status', label: 'Status' },
+        { key: 'browser', label: 'Navegador' },
+        { key: 'os', label: 'SO' },
+        { key: 'device_type', label: 'Dispositivo' },
+        { key: 'preset', label: 'Preset' },
+        { key: 'webm_size_mb', label: 'WEBM (MB)' },
+        { key: 'mp4_size_mb', label: 'MP4 (MB)' },
+        { key: 'duration_ms', label: 'Duração (ms)' },
+        { key: 'viewport', label: 'Viewport' },
+        { key: 'screen', label: 'Tela' },
+        { key: 'language', label: 'Idioma' },
+        { key: 'timezone', label: 'Timezone' },
+        { key: 'ip_address', label: 'IP' },
+        { key: 'client_metrics_json', label: 'Métricas (JSON)' },
+        { key: 'message', label: 'Mensagem' }
+      ],
+      `logs-video-${today}.xls`
+    );
+  }
+
+  function renderAbandonedTokens(rows) {
+    if (!abandonedTokensList) return;
+    if (!rows || !rows.length) {
+      abandonedTokensList.innerHTML =
+        '<tr><td colspan="5">Nenhum token não concluído no período.</td></tr>';
+      return;
+    }
+    abandonedTokensList.innerHTML = rows
+      .map(
+        (r) => `
+          <tr>
+            <td>${escapeHtmlAttr(r.email || '-')}</td>
+            <td>${escapeHtmlAttr(r.account_type || '-')}</td>
+            <td>${formatDateTime(r.created_at)}</td>
+            <td>${formatDateTime(r.expires_at)}</td>
+            <td>${r.status === 'pending' ? 'Pendente' : 'Expirado'}</td>
+          </tr>
+        `
+      )
+      .join('');
+  }
+
+  async function loadAbandonedTokens() {
+    if (!abandonedTokensList) return;
+    try {
+      const params = new URLSearchParams();
+      const status = (abandonedTokensFilterStatus && abandonedTokensFilterStatus.value) || 'all';
+      const from = (abandonedTokensFilterFrom && abandonedTokensFilterFrom.value) || '';
+      const to = (abandonedTokensFilterTo && abandonedTokensFilterTo.value) || '';
+      if (status) params.set('status', status);
+      if (from) params.set('from', from);
+      if (to) params.set('to', to);
+      params.set('limit', '500');
+      const res = await fetch(`/api/admin/abandoned-tokens?${params.toString()}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Falha ao carregar tokens não concluídos');
+      lastLoadedAbandonedTokens = data.tokens || [];
+      renderAbandonedTokens(lastLoadedAbandonedTokens);
+    } catch (error) {
+      console.error('Erro ao carregar tokens não concluídos:', error);
+      lastLoadedAbandonedTokens = [];
+      renderAbandonedTokens([]);
+    }
+  }
+
+  function exportAbandonedTokensToExcel() {
+    if (!lastLoadedAbandonedTokens.length) {
+      alert('Nenhum dado carregado para exportar. Aplique os filtros primeiro.');
+      return;
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    exportToXls(
+      lastLoadedAbandonedTokens.map((r) => ({
+        email: r.email || '',
+        account_type: r.account_type || '',
+        created_at: formatDateTime(r.created_at),
+        expires_at: formatDateTime(r.expires_at),
+        status: r.status === 'pending' ? 'Pendente' : 'Expirado'
+      })),
+      [
+        { key: 'email', label: 'E-mail' },
+        { key: 'account_type', label: 'Tipo' },
+        { key: 'created_at', label: 'Enviado em' },
+        { key: 'expires_at', label: 'Expira em' },
+        { key: 'status', label: 'Status' }
+      ],
+      `tokens-nao-concluidos-${today}.xls`
+    );
   }
 
   function compareValues(a, b, key) {
@@ -651,6 +798,9 @@
     }
     if (tab === 'video-logs') {
       loadVideoGenerationLogs(true);
+    }
+    if (tab === 'abandoned-tokens') {
+      loadAbandonedTokens();
     }
   }
 
@@ -1030,6 +1180,20 @@
   }
   if (videoLogFilterApplyMenu) {
     videoLogFilterApplyMenu.addEventListener('click', () => loadVideoGenerationLogs(true));
+  }
+  if (videoLogExportXls) {
+    videoLogExportXls.addEventListener('click', () => exportVideoLogsToExcel(lastLoadedVideoLogs));
+  }
+  if (videoLogExportXlsMenu) {
+    videoLogExportXlsMenu.addEventListener('click', () =>
+      exportVideoLogsToExcel(lastLoadedVideoLogsMenu)
+    );
+  }
+  if (abandonedTokensApplyBtn) {
+    abandonedTokensApplyBtn.addEventListener('click', () => loadAbandonedTokens());
+  }
+  if (abandonedTokensExportBtn) {
+    abandonedTokensExportBtn.addEventListener('click', () => exportAbandonedTokensToExcel());
   }
 
   if (collabFormCancelBtn) {

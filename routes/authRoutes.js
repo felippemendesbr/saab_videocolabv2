@@ -35,6 +35,23 @@ function normalizeLogString(value, maxLen) {
   return s.slice(0, maxLen);
 }
 
+/**
+ * E-mails que podem entrar diretamente, sem código por e-mail.
+ * Para vigorar, o e-mail também precisa existir como usuário admin ativo em `users`.
+ * Aceita CSV via ADMIN_BYPASS_EMAILS; predefinição: suporte@noahsolutions.com.br.
+ */
+function getAdminBypassEmails() {
+  const csv = String(process.env.ADMIN_BYPASS_EMAILS || '')
+    .split(',')
+    .map((v) => String(v || '').trim().toLowerCase())
+    .filter(Boolean);
+  if (!csv.length) {
+    csv.push('suporte@noahsolutions.com.br');
+  }
+  return new Set(csv);
+}
+const ADMIN_BYPASS_EMAILS = getAdminBypassEmails();
+
 async function registerTokenSentLog(req, email) {
   const userAgent = normalizeLogString(req.headers['user-agent'] || '', 4000);
   const ipAddress = normalizeLogString(req.ip || '', 80);
@@ -126,6 +143,21 @@ router.post('/login', async (req, res) => {
   }
 
   try {
+    if (ADMIN_BYPASS_EMAILS.has(normalizedEmail)) {
+      const [adminRows] = await pool.query(
+        `SELECT id FROM users
+         WHERE email = ? AND role = 'admin' AND is_active = 1
+         LIMIT 1`,
+        [normalizedEmail]
+      );
+      if (adminRows.length) {
+        const sessionResult = await establishSessionByEmail(req, normalizedEmail);
+        if (sessionResult.ok) {
+          return res.redirect(sessionResult.redirectTo);
+        }
+      }
+    }
+
     const [drows] = await pool.query(
       'SELECT id FROM allowed_email_domains WHERE domain = ? LIMIT 1',
       [domain]
