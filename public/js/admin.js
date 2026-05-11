@@ -92,9 +92,23 @@
   const abandonedTokensFilterTo = document.getElementById('abandoned-tokens-filter-to');
   const abandonedTokensApplyBtn = document.getElementById('abandoned-tokens-apply');
   const abandonedTokensExportBtn = document.getElementById('abandoned-tokens-export-xls');
+  const collaboratorJourneysList = document.getElementById('collaborator-journeys-list');
+  const journeysFilterStatus = document.getElementById('journeys-filter-status');
+  const journeysFilterFrom = document.getElementById('journeys-filter-from');
+  const journeysFilterTo = document.getElementById('journeys-filter-to');
+  const journeysApplyBtn = document.getElementById('journeys-apply');
+  const journeysExportBtn = document.getElementById('journeys-export-xls');
+  const collaboratorErrorsList = document.getElementById('collaborator-errors-list');
+  const errorsFilterFrom = document.getElementById('errors-filter-from');
+  const errorsFilterTo = document.getElementById('errors-filter-to');
+  const errorsApplyBtn = document.getElementById('errors-apply');
+  const errorsExportBtn = document.getElementById('errors-export-xls');
   let lastLoadedVideoLogs = [];
   let lastLoadedVideoLogsMenu = [];
   let lastLoadedAbandonedTokens = [];
+  let lastLoadedJourneys = [];
+  let lastLoadedJourneysFiltered = [];
+  let lastLoadedErrors = [];
   const collabFormCancelBtn = document.getElementById('collaborators-cancel-new');
   const usersListControls = document.getElementById('users-list-controls');
   const collaboratorsListControls = document.getElementById('collaborators-list-controls');
@@ -557,6 +571,183 @@
     }
   }
 
+  function applyJourneyStatusFilter(rows, status) {
+    if (!Array.isArray(rows)) return [];
+    if (status === 'completed') {
+      return rows.filter((r) => Number(r.convert_success_count || 0) > 0);
+    }
+    if (status === 'incomplete') {
+      return rows.filter((r) => Number(r.convert_success_count || 0) === 0);
+    }
+    return rows;
+  }
+
+  function renderCollaboratorJourneys(rows) {
+    if (!collaboratorJourneysList) return;
+    if (!rows || !rows.length) {
+      collaboratorJourneysList.innerHTML =
+        '<tr><td colspan="8">Nenhum colaborador no período/filtro.</td></tr>';
+      return;
+    }
+    collaboratorJourneysList.innerHTML = rows
+      .map((r) => {
+        const completed = Number(r.convert_success_count || 0) > 0;
+        const errors =
+          Number(r.generate_error_count || 0) + Number(r.convert_error_count || 0);
+        return `
+          <tr>
+            <td>${escapeHtmlAttr(r.email || '-')}</td>
+            <td>${Number(r.tokens_count || 0)}</td>
+            <td>${formatDateTime(r.last_token_at)}</td>
+            <td>${Number(r.generate_success_count || 0)}</td>
+            <td>${Number(r.convert_success_count || 0)}</td>
+            <td>${formatDateTime(r.last_convert_success_at)}</td>
+            <td>${errors}</td>
+            <td>${completed ? 'Concluiu' : 'Não concluiu'}</td>
+          </tr>
+        `;
+      })
+      .join('');
+  }
+
+  async function loadCollaboratorJourneys() {
+    if (!collaboratorJourneysList) return;
+    try {
+      const params = new URLSearchParams();
+      const from = (journeysFilterFrom && journeysFilterFrom.value) || '';
+      const to = (journeysFilterTo && journeysFilterTo.value) || '';
+      if (from) params.set('from', from);
+      if (to) params.set('to', to);
+      params.set('limit', '2000');
+      const res = await fetch(`/api/admin/collaborator-journeys?${params.toString()}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Falha ao carregar jornadas');
+      lastLoadedJourneys = data.journeys || [];
+      const status = (journeysFilterStatus && journeysFilterStatus.value) || 'all';
+      lastLoadedJourneysFiltered = applyJourneyStatusFilter(lastLoadedJourneys, status);
+      renderCollaboratorJourneys(lastLoadedJourneysFiltered);
+    } catch (error) {
+      console.error('Erro ao carregar jornadas:', error);
+      lastLoadedJourneys = [];
+      lastLoadedJourneysFiltered = [];
+      renderCollaboratorJourneys([]);
+    }
+  }
+
+  function exportJourneysToExcel() {
+    if (!lastLoadedJourneysFiltered.length) {
+      alert('Nenhum dado carregado para exportar. Aplique os filtros primeiro.');
+      return;
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    exportToXls(
+      lastLoadedJourneysFiltered.map((r) => ({
+        email: r.email || '',
+        tokens_count: Number(r.tokens_count || 0),
+        last_token_at: formatDateTime(r.last_token_at),
+        generate_success_count: Number(r.generate_success_count || 0),
+        convert_success_count: Number(r.convert_success_count || 0),
+        last_convert_success_at: formatDateTime(r.last_convert_success_at),
+        errors_count:
+          Number(r.generate_error_count || 0) + Number(r.convert_error_count || 0),
+        completed: Number(r.convert_success_count || 0) > 0 ? 'Concluiu' : 'Não concluiu'
+      })),
+      [
+        { key: 'email', label: 'E-mail' },
+        { key: 'tokens_count', label: 'Tokens enviados' },
+        { key: 'last_token_at', label: 'Último token' },
+        { key: 'generate_success_count', label: 'WEBM gerado' },
+        { key: 'convert_success_count', label: 'MP4 concluído' },
+        { key: 'last_convert_success_at', label: 'Último MP4' },
+        { key: 'errors_count', label: 'Erros (total)' },
+        { key: 'completed', label: 'Status' }
+      ],
+      `jornadas-colaboradores-${today}.xls`
+    );
+  }
+
+  function renderCollaboratorErrors(rows) {
+    if (!collaboratorErrorsList) return;
+    if (!rows || !rows.length) {
+      collaboratorErrorsList.innerHTML =
+        '<tr><td colspan="7">Nenhum erro no período.</td></tr>';
+      return;
+    }
+    collaboratorErrorsList.innerHTML = rows
+      .map((r) => {
+        const lastMsg = r.last_message || '-';
+        const tipMsg = lastMsg.length > 1800 ? `${lastMsg.slice(0, 1800)}…` : lastMsg;
+        return `
+          <tr>
+            <td>${escapeHtmlAttr(r.email || '-')}</td>
+            <td>${Number(r.generate_error_count || 0)}</td>
+            <td>${Number(r.convert_error_count || 0)}</td>
+            <td>${Number(r.total_errors || 0)}</td>
+            <td>${formatDateTime(r.last_error_at)}</td>
+            <td>${escapeHtmlAttr(r.last_event_type || '-')}</td>
+            <td title="${escapeHtmlAttr(tipMsg)}">${escapeHtmlAttr(
+              lastMsg.length > 80 ? `${lastMsg.slice(0, 80)}…` : lastMsg
+            )}</td>
+          </tr>
+        `;
+      })
+      .join('');
+  }
+
+  async function loadCollaboratorErrors() {
+    if (!collaboratorErrorsList) return;
+    try {
+      const params = new URLSearchParams();
+      const from = (errorsFilterFrom && errorsFilterFrom.value) || '';
+      const to = (errorsFilterTo && errorsFilterTo.value) || '';
+      if (from) params.set('from', from);
+      if (to) params.set('to', to);
+      params.set('limit', '2000');
+      const res = await fetch(`/api/admin/collaborator-errors?${params.toString()}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Falha ao carregar falhas');
+      lastLoadedErrors = data.errors || [];
+      renderCollaboratorErrors(lastLoadedErrors);
+    } catch (error) {
+      console.error('Erro ao carregar falhas dos colaboradores:', error);
+      lastLoadedErrors = [];
+      renderCollaboratorErrors([]);
+    }
+  }
+
+  function exportErrorsToExcel() {
+    if (!lastLoadedErrors.length) {
+      alert('Nenhum dado carregado para exportar. Aplique os filtros primeiro.');
+      return;
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    exportToXls(
+      lastLoadedErrors.map((r) => ({
+        email: r.email || '',
+        generate_error_count: Number(r.generate_error_count || 0),
+        convert_error_count: Number(r.convert_error_count || 0),
+        total_errors: Number(r.total_errors || 0),
+        last_error_at: formatDateTime(r.last_error_at),
+        last_event_type: r.last_event_type || '',
+        last_browser: r.last_browser || '',
+        last_os: r.last_os || '',
+        last_message: r.last_message || ''
+      })),
+      [
+        { key: 'email', label: 'E-mail' },
+        { key: 'generate_error_count', label: 'generate_error' },
+        { key: 'convert_error_count', label: 'convert_error' },
+        { key: 'total_errors', label: 'Total' },
+        { key: 'last_error_at', label: 'Último erro' },
+        { key: 'last_event_type', label: 'Última falha' },
+        { key: 'last_browser', label: 'Navegador (última)' },
+        { key: 'last_os', label: 'SO (última)' },
+        { key: 'last_message', label: 'Mensagem (última)' }
+      ],
+      `falhas-colaboradores-${today}.xls`
+    );
+  }
+
   function exportAbandonedTokensToExcel() {
     if (!lastLoadedAbandonedTokens.length) {
       alert('Nenhum dado carregado para exportar. Aplique os filtros primeiro.');
@@ -801,6 +992,12 @@
     }
     if (tab === 'abandoned-tokens') {
       loadAbandonedTokens();
+    }
+    if (tab === 'collaborator-journeys') {
+      loadCollaboratorJourneys();
+    }
+    if (tab === 'collaborator-errors') {
+      loadCollaboratorErrors();
     }
   }
 
@@ -1194,6 +1391,25 @@
   }
   if (abandonedTokensExportBtn) {
     abandonedTokensExportBtn.addEventListener('click', () => exportAbandonedTokensToExcel());
+  }
+  if (journeysApplyBtn) {
+    journeysApplyBtn.addEventListener('click', () => loadCollaboratorJourneys());
+  }
+  if (journeysFilterStatus) {
+    journeysFilterStatus.addEventListener('change', () => {
+      const status = journeysFilterStatus.value || 'all';
+      lastLoadedJourneysFiltered = applyJourneyStatusFilter(lastLoadedJourneys, status);
+      renderCollaboratorJourneys(lastLoadedJourneysFiltered);
+    });
+  }
+  if (journeysExportBtn) {
+    journeysExportBtn.addEventListener('click', () => exportJourneysToExcel());
+  }
+  if (errorsApplyBtn) {
+    errorsApplyBtn.addEventListener('click', () => loadCollaboratorErrors());
+  }
+  if (errorsExportBtn) {
+    errorsExportBtn.addEventListener('click', () => exportErrorsToExcel());
   }
 
   if (collabFormCancelBtn) {

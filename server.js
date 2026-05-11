@@ -612,6 +612,129 @@ app.post('/api/logs/video-generation', ensureAuthenticated, ensureCollaborator, 
 });
 
 /**
+ * Jornadas de colaboradores: para cada e-mail que recebeu um código (token_sent),
+ * indica se o processo chegou ao final com convert_success (MP4 baixado).
+ */
+app.get('/api/admin/collaborator-journeys', ensureAuthenticated, ensureAdmin, async (req, res) => {
+  try {
+    const from = String(req.query.from || '').trim();
+    const to = String(req.query.to || '').trim();
+    const limitRaw = Number(req.query.limit || 500);
+    const limit = Math.max(1, Math.min(2000, Number.isFinite(limitRaw) ? limitRaw : 500));
+
+    const where = [
+      "event_type IN ('token_sent','generate_success','convert_success','convert_error','generate_error')",
+      'email IS NOT NULL'
+    ];
+    const params = [];
+    if (from) {
+      where.push('created_at >= ?');
+      params.push(`${from} 00:00:00`);
+    }
+    if (to) {
+      where.push('created_at <= ?');
+      params.push(`${to} 23:59:59`);
+    }
+    const whereSql = `WHERE ${where.join(' AND ')}`;
+
+    const [rows] = await pool.query(
+      `SELECT email,
+              SUM(CASE WHEN event_type='token_sent' THEN 1 ELSE 0 END) AS tokens_count,
+              MAX(CASE WHEN event_type='token_sent' THEN created_at END) AS last_token_at,
+              SUM(CASE WHEN event_type='generate_success' THEN 1 ELSE 0 END) AS generate_success_count,
+              MAX(CASE WHEN event_type='generate_success' THEN created_at END) AS last_generate_success_at,
+              SUM(CASE WHEN event_type='convert_success' THEN 1 ELSE 0 END) AS convert_success_count,
+              MAX(CASE WHEN event_type='convert_success' THEN created_at END) AS last_convert_success_at,
+              SUM(CASE WHEN event_type='convert_error' THEN 1 ELSE 0 END) AS convert_error_count,
+              SUM(CASE WHEN event_type='generate_error' THEN 1 ELSE 0 END) AS generate_error_count
+       FROM video_generation_logs
+       ${whereSql}
+       GROUP BY email
+       HAVING tokens_count > 0
+       ORDER BY last_token_at DESC
+       LIMIT ?`,
+      [...params, limit]
+    );
+
+    res.json({ journeys: rows });
+  } catch (error) {
+    console.error('Erro ao listar jornadas de colaboradores:', error);
+    res.status(500).json({ error: 'Falha ao listar jornadas de colaboradores.' });
+  }
+});
+
+/**
+ * Colaboradores com eventos de erro (generate_error / convert_error).
+ * Agrega por e-mail e devolve a última mensagem registada.
+ */
+app.get('/api/admin/collaborator-errors', ensureAuthenticated, ensureAdmin, async (req, res) => {
+  try {
+    const from = String(req.query.from || '').trim();
+    const to = String(req.query.to || '').trim();
+    const limitRaw = Number(req.query.limit || 500);
+    const limit = Math.max(1, Math.min(2000, Number.isFinite(limitRaw) ? limitRaw : 500));
+
+    const where = [
+      "event_type IN ('generate_error','convert_error')",
+      'email IS NOT NULL'
+    ];
+    const params = [];
+    if (from) {
+      where.push('created_at >= ?');
+      params.push(`${from} 00:00:00`);
+    }
+    if (to) {
+      where.push('created_at <= ?');
+      params.push(`${to} 23:59:59`);
+    }
+    const whereSql = `WHERE ${where.join(' AND ')}`;
+
+    const [stats] = await pool.query(
+      `SELECT email,
+              SUM(CASE WHEN event_type='generate_error' THEN 1 ELSE 0 END) AS generate_error_count,
+              SUM(CASE WHEN event_type='convert_error' THEN 1 ELSE 0 END) AS convert_error_count,
+              COUNT(*) AS total_errors,
+              MAX(created_at) AS last_error_at
+       FROM video_generation_logs
+       ${whereSql}
+       GROUP BY email
+       ORDER BY last_error_at DESC
+       LIMIT ?`,
+      [...params, limit]
+    );
+
+    const [latest] = await pool.query(
+      `SELECT v.email, v.event_type AS last_event_type, v.message AS last_message, v.browser, v.os
+       FROM video_generation_logs v
+       INNER JOIN (
+         SELECT email, MAX(id) AS max_id
+         FROM video_generation_logs
+         ${whereSql}
+         GROUP BY email
+       ) m ON m.max_id = v.id`,
+      params
+    );
+
+    const lookup = new Map(latest.map((r) => [r.email, r]));
+    const rows = stats.map((s) => {
+      const m = lookup.get(s.email) || {};
+      return {
+        ...s,
+        last_event_type: m.last_event_type || null,
+        last_message: m.last_message || null,
+        last_browser: m.browser || null,
+        last_os: m.os || null
+      };
+    });
+
+    res.json({ errors: rows });
+  } catch (error) {
+    console.error('Erro ao listar colaboradores com erros:', error);
+    res.status(500).json({ error: 'Falha ao listar colaboradores com erros.' });
+  }
+});
+
+/**
  * Tokens de acesso enviados por e-mail que ainda não foram consumidos (login não concluído).
  * - status=pending: dentro do prazo de validade
  * - status=expired: prazo de validade vencido sem uso

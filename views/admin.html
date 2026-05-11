@@ -59,6 +59,18 @@
           </svg>
           <span>Tokens não concluídos</span>
         </button>
+        <button class="vc-sidebar-item" data-tab="collaborator-journeys">
+          <svg class="vc-menu-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 12h6l2-4 4 8 2-4h2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span>Jornadas (token → MP4)</span>
+        </button>
+        <button class="vc-sidebar-item" data-tab="collaborator-errors">
+          <svg class="vc-menu-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 9v4M12 17h.01M10.3 3.86a2 2 0 013.4 0l7.4 12.86A2 2 0 0119.4 20H4.6a2 2 0 01-1.7-3.28L10.3 3.86z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span>Falhas (erro/conversão)</span>
+        </button>
       </aside>
 
       <section class="vc-admin-content">
@@ -471,6 +483,84 @@
                     </tr>
                   </thead>
                   <tbody id="video-generation-logs-list-menu"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="vc-card vc-tab-panel vc-hidden" data-panel="collaborator-journeys">
+          <div class="vc-dashboard-panel vc-dashboard-table-panel">
+            <h3 class="vc-dashboard-panel-title">Jornada dos colaboradores (token → conversão MP4)</h3>
+            <p class="vc-card-subtitle">
+              Lista de e-mails que receberam o código de acesso e indica se chegaram a concluir o processo com sucesso (convert_success).
+            </p>
+            <div class="vc-dashboard-panel-body">
+              <div class="vc-crud-filters">
+                <p class="vc-section-label">Filtros</p>
+                <div class="vc-crud-form" style="grid-template-columns: 0.8fr 0.8fr 0.8fr auto auto;">
+                  <select id="journeys-filter-status" class="vc-input">
+                    <option value="all">Todos</option>
+                    <option value="completed">Concluíram (com convert_success)</option>
+                    <option value="incomplete">Não concluíram</option>
+                  </select>
+                  <input type="date" id="journeys-filter-from" class="vc-input" />
+                  <input type="date" id="journeys-filter-to" class="vc-input" />
+                  <button id="journeys-apply" class="vc-button vc-crud-ghost" type="button">Aplicar</button>
+                  <button id="journeys-export-xls" class="vc-button vc-crud-ghost" type="button">Exportar Excel</button>
+                </div>
+              </div>
+              <div class="vc-table-wrapper">
+                <table class="vc-crud-table vc-zebra-table">
+                  <thead>
+                    <tr>
+                      <th>E-mail</th>
+                      <th>Tokens enviados</th>
+                      <th>Último token</th>
+                      <th>WEBM gerado</th>
+                      <th>MP4 concluído</th>
+                      <th>Último MP4</th>
+                      <th>Erros</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody id="collaborator-journeys-list"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="vc-card vc-tab-panel vc-hidden" data-panel="collaborator-errors">
+          <div class="vc-dashboard-panel vc-dashboard-table-panel">
+            <h3 class="vc-dashboard-panel-title">Colaboradores com falha na geração ou conversão</h3>
+            <p class="vc-card-subtitle">
+              Lista os e-mails que registraram eventos de generate_error ou convert_error, com totais e a última falha.
+            </p>
+            <div class="vc-dashboard-panel-body">
+              <div class="vc-crud-filters">
+                <p class="vc-section-label">Filtros</p>
+                <div class="vc-crud-form" style="grid-template-columns: 0.8fr 0.8fr auto auto;">
+                  <input type="date" id="errors-filter-from" class="vc-input" />
+                  <input type="date" id="errors-filter-to" class="vc-input" />
+                  <button id="errors-apply" class="vc-button vc-crud-ghost" type="button">Aplicar</button>
+                  <button id="errors-export-xls" class="vc-button vc-crud-ghost" type="button">Exportar Excel</button>
+                </div>
+              </div>
+              <div class="vc-table-wrapper">
+                <table class="vc-crud-table vc-zebra-table">
+                  <thead>
+                    <tr>
+                      <th>E-mail</th>
+                      <th>generate_error</th>
+                      <th>convert_error</th>
+                      <th>Total</th>
+                      <th>Último erro</th>
+                      <th>Última falha</th>
+                      <th>Última mensagem</th>
+                    </tr>
+                  </thead>
+                  <tbody id="collaborator-errors-list"></tbody>
                 </table>
               </div>
             </div>
